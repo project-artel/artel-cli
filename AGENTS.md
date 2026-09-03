@@ -34,6 +34,23 @@ This CLI is published, so follow `.agents/docs/release.md` for a release.
 Use project-local skills when installed and applicable. Skill instructions
 define their own triggers, formats, and output paths.
 
+## A token while the login command does not exist yet
+
+`artel auth login` is the shape this repository is being built toward, not
+something that runs today. Until it does, any command that calls the
+orchestration server needs a token from somewhere. Against a local server, mint
+it:
+
+```bash
+TOKEN=$(.claude/skills/artel-jwt/mint-jwt.py --sub <app_user.id> --ttl 8h)
+```
+
+`--sub` must be an existing `app_user.id` — the token is authoritative about
+identity only, and the profile is read from the database. `/api/sdk/**` takes a
+different audience (`--audience sdk`) and rejects the browser session token.
+
+The `artel-jwt` skill covers the rest. It mints for a local server only.
+
 ## Documentation language
 
 Write and maintain all project documentation in English. Keep code identifiers,
