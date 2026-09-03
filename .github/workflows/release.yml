@@ -1,0 +1,62 @@
+# 태그를 밀면 npm 에 올린다.
+#
+# 토큰을 쓰지 않는다. npm 의 trusted publishing 을 쓰므로 GitHub Actions 가 그 자리에서 받은
+# OIDC 토큰이 자격증명이고, 저장소 secret 에 오래 사는 npm 토큰을 두지 않는다. 그래서
+# `id-token: write` 가 이 워크플로의 핵심 권한이다 — 없으면 토큰을 만들지 못해 배포가 막힌다.
+#
+# ⚠️ 첫 배포는 이 워크플로가 하지 못한다. trusted publisher 는 npmjs.com 의 **패키지 설정**
+#    안에서 등록하는데, 등록하려면 그 패키지가 이미 있어야 한다. 그래서 최초 한 번은 손으로
+#    올리고, 그다음 npmjs.com 에서 이 저장소와 이 파일 이름을 trusted publisher 로 등록한다.
+#
+# 버전의 근거는 `package.json` 하나다. 태그는 그 값을 가리키는 이름일 뿐이고, 둘이 어긋나면
+# 올리기 전에 멈춘다 — `npm publish` 는 태그가 무엇이든 `package.json` 의 값을 올리므로,
+# 확인하지 않으면 `v0.1.0` 태그가 `0.0.9` 를 배포하는 일이 조용히 일어난다.
+#
+# dist-tag 도 여기 적지 않는다. `package.json` 의 `publishConfig.tag` 가 정하므로 손으로 올리든
+# 이 워크플로가 올리든 같은 자리에서 결정되고, alpha 가 `latest` 로 새는 경로가 없다.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # OIDC 토큰을 발급받는 권한. trusted publishing 이 이것 하나에 걸려 있다.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # trusted publishing 이 Node 22.14.0 이상을 요구한다. `package.json` 의 engines 는
+          # 22.12.0 이지만 그것은 사용자가 쓸 수 있는 바닥이고, 이 자리는 OIDC 가 도는 바닥이다.
+          node-version: '22.14.0'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      - name: 태그와 package.json 의 버전이 같은지 본다
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "태그는 $tag 인데 package.json 은 $pkg 다. 올리지 않는다." >&2
+            exit 1
+          fi
+          echo "버전 $pkg"
+
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+      - name: 올라갈 내용을 적어 둔다
+        run: npm pack --dry-run
+
+      # 토큰을 넘기지 않는다. npm CLI 가 OIDC 토큰을 스스로 집어 쓰고, provenance 도 함께 붙는다.
+      - run: npm publish
