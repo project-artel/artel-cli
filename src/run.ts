@@ -5,7 +5,12 @@ import { Command, CommanderError } from 'commander';
 import { runAuthLogin } from './commands/auth/login.js';
 import { runAuthLogout } from './commands/auth/logout.js';
 import { runAuthStatus } from './commands/auth/status.js';
+import { runGameLogout } from './commands/game/logout.js';
+import { runGameStart } from './commands/game/start.js';
 import { CliError, UsageError } from './errors.js';
+import { DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH } from './game/launch-args.js';
+import { DEFAULT_LOGOUT_TIMEOUT_MS } from './game/logout-flow.js';
+import { DEFAULT_REGISTRATION_TIMEOUT_MS } from './game/start-flow.js';
 import { processSink, writeErrorEnvelope, type OutputSink } from './output/envelope.js';
 
 /**
@@ -37,6 +42,18 @@ export function parseExpiresInDays(value: string): number | null {
     throw new UsageError('--expires-in-days must be at least 1, or "never".');
   }
   return days;
+}
+
+/** `--width`, `--height`, `--timeout` 이 공유하는 검증. */
+export function parsePositiveInt(value: string, flagLabel: string): number {
+  if (!/^[0-9]+$/.test(value)) {
+    throw new UsageError(`${flagLabel} takes a positive whole number, not "${value}".`);
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (parsed < 1) {
+    throw new UsageError(`${flagLabel} must be at least 1.`);
+  }
+  return parsed;
 }
 
 export async function runCli(
@@ -72,18 +89,30 @@ export async function runCli(
       'days until the token expires, or "never"',
       String(DEFAULT_EXPIRES_IN_DAYS),
     )
-    .action(async (options: { json: boolean; name: string; expiresInDays: string }) => {
-      json = options.json;
-      await runAuthLogin(
-        {
-          json: options.json,
-          name: options.name,
-          expiresInDays: parseExpiresInDays(options.expiresInDays),
-        },
-        sink,
-        env,
-      );
-    });
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', 'console base URL; overrides ARTEL_CONSOLE_BASE_URL')
+    .action(
+      async (options: {
+        json: boolean;
+        name: string;
+        expiresInDays: string;
+        apiUrl?: string | undefined;
+        consoleUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runAuthLogin(
+          {
+            json: options.json,
+            name: options.name,
+            expiresInDays: parseExpiresInDays(options.expiresInDays),
+            apiUrl: options.apiUrl,
+            consoleUrl: options.consoleUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
 
   auth
     .command('status')
@@ -102,6 +131,96 @@ export async function runCli(
       json = options.json;
       await runAuthLogout(options, sink, env);
     });
+
+  const game = program.command('game').description('Launch a game build that is already signed in');
+
+  game
+    .command('start')
+    .description('Launch a build, obtain an SDK token for it, and wait for it to register')
+    .requiredOption('--project <id>', 'project the game instance registers under')
+    .requiredOption('--build <path>', 'path to the game executable')
+    .option('--width <n>', 'window width in pixels', String(DEFAULT_SCREEN_WIDTH))
+    .option('--height <n>', 'window height in pixels', String(DEFAULT_SCREEN_HEIGHT))
+    .option(
+      '--timeout <seconds>',
+      'seconds to wait for the game to register',
+      String(DEFAULT_REGISTRATION_TIMEOUT_MS / 1_000),
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', 'console base URL; overrides ARTEL_CONSOLE_BASE_URL')
+    .action(
+      async (options: {
+        project: string;
+        build: string;
+        width: string;
+        height: string;
+        timeout: string;
+        json: boolean;
+        apiUrl?: string | undefined;
+        consoleUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runGameStart(
+          {
+            json: options.json,
+            project: options.project,
+            build: options.build,
+            width: parsePositiveInt(options.width, '--width'),
+            height: parsePositiveInt(options.height, '--height'),
+            timeoutSeconds: parsePositiveInt(options.timeout, '--timeout'),
+            apiUrl: options.apiUrl,
+            consoleUrl: options.consoleUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  game
+    .command('logout')
+    .description("Clear the game's stored session by launching it briefly with -artel-logout")
+    .requiredOption('--project <id>', 'project the game instance registers under')
+    .requiredOption('--build <path>', 'path to the game executable')
+    .option('--width <n>', 'window width in pixels', String(DEFAULT_SCREEN_WIDTH))
+    .option('--height <n>', 'window height in pixels', String(DEFAULT_SCREEN_HEIGHT))
+    .option(
+      '--timeout <seconds>',
+      'seconds to wait for the game to exit',
+      String(DEFAULT_LOGOUT_TIMEOUT_MS / 1_000),
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', 'console base URL; overrides ARTEL_CONSOLE_BASE_URL')
+    .action(
+      async (options: {
+        project: string;
+        build: string;
+        width: string;
+        height: string;
+        timeout: string;
+        json: boolean;
+        apiUrl?: string | undefined;
+        consoleUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runGameLogout(
+          {
+            json: options.json,
+            project: options.project,
+            build: options.build,
+            width: parsePositiveInt(options.width, '--width'),
+            height: parsePositiveInt(options.height, '--height'),
+            timeoutSeconds: parsePositiveInt(options.timeout, '--timeout'),
+            apiUrl: options.apiUrl,
+            consoleUrl: options.consoleUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
 
   try {
     await program.parseAsync(argv, { from: 'user' });

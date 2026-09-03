@@ -4,6 +4,9 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 
+import { SDK_TOKEN_MINT_PATH } from '../src/http/client.js';
+import type { GameInstance } from '../src/http/gameInstances.js';
+import type { GameProcessSpawner, SpawnedGameProcess } from '../src/game/process.js';
 import type { OutputSink } from '../src/output/envelope.js';
 
 export interface MemorySink extends OutputSink {
@@ -192,6 +195,183 @@ export async function callBack(
     request.on('error', reject);
     request.end();
   });
+}
+
+export interface SdkTokenMintCall {
+  authorization: string | null;
+}
+
+export interface GameInstanceListCall {
+  authorization: string | null;
+  projectId: string;
+}
+
+export interface FakeGameServerOptions {
+  sdkToken: string;
+  /** 준 값이 없으면 SDK token mint 를 404 로 답한다(`sdk_token_not_supported` 경로 검증용). */
+  mintNotSupported?: boolean;
+  /** `game-instances` 목록 GET 호출마다 순서대로 하나씩 꺼내 쓴다. 소진되면 마지막 값을 반복한다. */
+  instanceSequence: readonly (readonly GameInstance[])[];
+}
+
+export interface FakeGameServer {
+  baseUrl: string;
+  mintCalls: SdkTokenMintCall[];
+  listCalls: GameInstanceListCall[];
+  close(): Promise<void>;
+}
+
+/**
+ * orchestration 서버 흉내. `mintSdkToken` 과 `listGameInstances` 가 실제로 부르는 두 경로만
+ * 답한다. `game-instances` 목록은 폴링할 때마다 다음 snapshot 을 내주므로, 등록이 몇 번째
+ * polling 에 나타나는지를 테스트가 정확히 통제할 수 있다.
+ */
+export async function startFakeGameServer(options: FakeGameServerOptions): Promise<FakeGameServer> {
+  const mintCalls: SdkTokenMintCall[] = [];
+  const listCalls: GameInstanceListCall[] = [];
+  let listCallCount = 0;
+
+  const server = http.createServer((request, response) => {
+    const authorization = request.headers.authorization ?? null;
+    const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+
+    if (request.method === 'POST' && url.pathname === SDK_TOKEN_MINT_PATH) {
+      mintCalls.push({ authorization });
+      if (options.mintNotSupported === true) {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end('{"code":"not_found","message":"no such endpoint"}');
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          token: options.sdkToken,
+          expiresAt: null,
+          refreshToken: 'refresh_token_value',
+          refreshExpiresAt: null,
+          userId: 'user-1',
+          displayName: 'Test User',
+        }),
+      );
+      return;
+    }
+
+    const projectMatch = /^\/api\/projects\/([^/]+)\/game-instances$/.exec(url.pathname);
+    if (request.method === 'GET' && projectMatch !== null) {
+      const projectId = decodeURIComponent(projectMatch[1] ?? '');
+      listCalls.push({ authorization, projectId });
+      const index = Math.min(listCallCount, options.instanceSequence.length - 1);
+      const items = options.instanceSequence[index] ?? [];
+      listCallCount += 1;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ items }));
+      return;
+    }
+
+    response.writeHead(404, { 'content-type': 'application/json' });
+    response.end('{"code":"not_found","message":"no such route"}');
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    throw new Error('the fake game server did not bind to a TCP port');
+  }
+
+  return {
+    baseUrl: `http://127.0.0.1:${String(address.port)}`,
+    mintCalls,
+    listCalls,
+    async close() {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) =>
+        server.close(() => {
+          resolve();
+        }),
+      );
+    },
+  };
+}
+
+export interface FakeSpawnCall {
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+}
+
+export interface FakeSpawnedProcess extends SpawnedGameProcess {
+  /** 테스트가 자식이 (일찍) 죽었다고 알리는 손잡이. */
+  fireExit(code: number | null, signal: NodeJS.Signals | null): void;
+  killCalls: (NodeJS.Signals | undefined)[];
+}
+
+export interface FakeSpawner {
+  spawn: GameProcessSpawner;
+  calls: FakeSpawnCall[];
+  processes: FakeSpawnedProcess[];
+  /** 다음 한 번의 spawn 호출만 이 에러로 실패시킨다. */
+  failNext(error: Error & { code?: string }): void;
+}
+
+/** 실제 게임을 띄우지 않고 `game start`/`game logout` 을 테스트하는 손잡이. */
+export function createFakeSpawner(pid = 4242): FakeSpawner {
+  const calls: FakeSpawnCall[] = [];
+  const processes: FakeSpawnedProcess[] = [];
+  let pendingFailure: (Error & { code?: string }) | null = null;
+
+  const spawn: GameProcessSpawner = (command, args, env) => {
+    calls.push({ command, args: [...args], env });
+
+    if (pendingFailure !== null) {
+      const failure = pendingFailure;
+      pendingFailure = null;
+      return Promise.reject(failure);
+    }
+
+    const listeners: ((code: number | null, signal: NodeJS.Signals | null) => void)[] = [];
+    const killCalls: (NodeJS.Signals | undefined)[] = [];
+    const proc: FakeSpawnedProcess = {
+      pid,
+      onExit(listener) {
+        listeners.push(listener);
+      },
+      kill(signal) {
+        killCalls.push(signal);
+      },
+      fireExit(code, signal) {
+        for (const listener of listeners) {
+          listener(code, signal);
+        }
+      },
+      killCalls,
+    };
+    processes.push(proc);
+    return Promise.resolve(proc);
+  };
+
+  return {
+    spawn,
+    calls,
+    processes,
+    failNext(error) {
+      pendingFailure = error;
+    },
+  };
+}
+
+/** 고정 sleep 대신 조건이 참이 될 때까지 짧은 간격으로 다시 확인한다. */
+export async function waitUntil(
+  predicate: () => boolean,
+  timeoutMs = 2_000,
+  intervalMs = 5,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      throw new Error('waitUntil: condition was never met');
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
 }
 
 export function relayQuery(url: string): {

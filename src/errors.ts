@@ -16,9 +16,17 @@ export const ERROR_CODES = [
   'credential_file_unreadable',
   'credential_file_version',
   'missing_api_base_url',
+  'missing_console_base_url',
+  'invalid_base_url',
   'network_error',
   'server_error',
   'internal_error',
+  'sdk_token_not_supported',
+  'game_build_not_found',
+  'game_launch_failed',
+  'game_exited_before_registration',
+  'game_registration_timeout',
+  'game_logout_timeout',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
