@@ -10,14 +10,33 @@ Fill this document during project initialization. Agents must verify commands ag
   is served by `--json` rather than by a separate interface.
 - Core domain: authenticated access to the orchestration server's end-user API,
   and launching a game build that carries the Artel SDK
-- Runtime environment: Node.js with TypeScript (not yet configured — see
-  Commands below)
+- Runtime environment: Node.js `>=22.12.0` with TypeScript, built by `tsc`
+  alone (no bundler). The package is ESM (`"type": "module"`).
 
 ## Architecture
 
-- Entry points: TODO — the `artel` binary, once `package.json` declares it
-- Main modules: TODO
-- Dependency direction: TODO
+- Entry points: `src/cli.ts`, built to `dist/cli.js` and declared as the `artel`
+  binary. It does nothing but call `runCli` from `src/run.ts`, which assembles
+  the `commander` tree and maps a thrown error to an exit code.
+- Main modules:
+  - `src/commands/auth/` — `login`, `status`, `logout`. These call `credentials`
+    and `auth` and hand the result to `output`; they never touch `node:fs` or
+    `node:http` directly.
+  - `src/credentials/` — `paths` (where the file lives), `store` (0600 read,
+    write and remove), `resolve` (`ARTEL_TOKEN` before the file), `types`.
+  - `src/auth/` — `pkce`, `loopback` (the `127.0.0.1` callback listener),
+    `browser`, `login-flow` (the dependency injection point that lets the login
+    tests run with no browser and no server).
+  - `src/http/` — `client` (the CLI token exchange call), `errors`.
+  - `src/output/` — `contract` (the `--json` shapes), `envelope`, `human`.
+  - `src/config.ts` — `ARTEL_API_BASE_URL` and `ARTEL_CONSOLE_BASE_URL`.
+- Dependency direction: `cli` → `run` → `commands` → {`auth`, `credentials`,
+  `http`} → `config`, with no edge back. `credentials` does not import `http`.
+  `http/client` takes a token string; it never resolves a credential itself.
+  `output` cannot receive a `ResolvedCredential` at all: it takes
+  `CredentialReport`, whose `token?: never` field makes the assignment a
+  compile error. "Never print the token" is enforced by the type checker rather
+  than by discipline.
 - External systems:
   - the orchestration server's end-user API (REST, plus Server-Sent Events for
     QA run progress). `insomnia-api` in the sibling repository holds its OpenAPI
@@ -30,21 +49,37 @@ Fill this document during project initialization. Agents must verify commands ag
 
 | Purpose | Command |
 |---|---|
-| Install dependencies | TODO |
-| Run locally | TODO |
-| Format | TODO |
-| Lint | TODO |
-| Type-check | TODO |
-| Unit tests | TODO |
-| Integration tests | TODO |
-| Build | TODO |
+| Install dependencies | `npm install` |
+| Run locally | `npm run build && node dist/cli.js <command>` |
+| Format | `npm run format` (`prettier --write .`) |
+| Lint | `npm run lint` (`eslint .`) |
+| Type-check | `npm run typecheck` (`tsc -p tsconfig.json --noEmit`) |
+| Unit tests | `npm test` (`vitest run`) |
+| Integration tests | `npm test` — the login tests stand up real loopback HTTP servers rather than mocking `fetch`, so there is no separate suite |
+| Build | `npm run build` (`tsc -p tsconfig.build.json`) |
 
 ## Constraints
 
-- Supported platforms: TODO
-- Compatibility requirements: TODO
-- Performance constraints: TODO
-- Security or privacy requirements: TODO
+- Supported platforms: Linux, macOS and Windows. The credentials file is
+  `0600` on POSIX; Windows does not enforce POSIX mode bits, so there the file
+  leans on the user profile ACL and `--json` reports `"mode": null`.
+- Compatibility requirements: Node `>=22.12.0`, which is what `commander@15`
+  requires. The `--json` shape of every command is a public contract from the
+  first release; `tests/json-contract.test.ts` asserts each command's key set
+  so that removing or renaming a field breaks the build.
+- Performance constraints: none. Every HTTP request carries
+  `AbortSignal.timeout(30_000)` and none is retried — issuing a token is not
+  idempotent.
+- Security or privacy requirements:
+  - The token is never written to stdout, stderr, a log, or an error message.
+    `--json` reports a `fingerprint` — the first 12 hex of `sha256(token)` —
+    instead.
+  - The credentials file is created `0600` at `open` time, not chmod'd
+    afterwards, and the CLI refuses to read one that group or others can reach.
+  - `artel auth login` binds its callback listener to `127.0.0.1` only,
+    checks the `Host` header, and compares `state` with `timingSafeEqual`.
+  - There is no `--token` flag. A secret on the process arguments is visible to
+    every other user on the machine through `ps`; `ARTEL_TOKEN` fills that need.
 
 ### What the SDK imposes on a launched build
 

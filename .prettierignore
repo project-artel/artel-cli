@@ -1,0 +1,6 @@
+dist/
+node_modules/
+
+# Markdown in this repository is hand-wrapped prose (agent instructions, plans,
+# the README). Reflowing it would bury a real change in formatting churn.
+*.md
