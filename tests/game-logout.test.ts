@@ -65,7 +65,10 @@ describe('runGameLogoutFlow', () => {
       const result = await promise;
       expect(result.exitCode).toBe(0);
       expect(spawner.calls[0]?.args).toContain('-artel-logout');
-      expect(spawner.calls[0]?.env.ARTEL_SDK_TOKEN).toBe(SDK_TOKEN);
+      // 지우러 가는 실행은 토큰도 프로젝트도 들고 가지 않는다. SDK 는 지우고 나서 심으므로
+      // 둘 중 하나라도 실으면 로그아웃이 그 자리에서 로그인으로 뒤집힌다.
+      expect(spawner.calls[0]?.env.ARTEL_SDK_TOKEN).toBeUndefined();
+      expect(spawner.calls[0]?.args).not.toContain('-artel-project');
       expect(spawner.calls[0]?.args.join(' ')).not.toContain(SDK_TOKEN);
     } finally {
       await api.close();

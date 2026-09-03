@@ -50,14 +50,14 @@ describe('buildGameLaunchArgs', () => {
       'false',
       '-artel-frontend',
       'https://artel.kr',
-      '-artel-project',
-      '42',
       '-logFile',
       '/home/user/.artel/logs/game-1.log',
       '-screen-width',
       '1280',
       '-screen-height',
       '720',
+      '-artel-project',
+      '42',
     ]);
     expect(args).not.toContain('-artel-logout');
   });
@@ -65,6 +65,13 @@ describe('buildGameLaunchArgs', () => {
   it('adds -artel-logout only when asked', () => {
     const args = buildGameLaunchArgs({ ...base, logout: true });
     expect(args.at(-1)).toBe('-artel-logout');
+  });
+
+  it('leaves -artel-project out when there is none', () => {
+    // 지우러 가는 실행에 프로젝트를 실으면 SDK 가 지운 자리에 그것을 도로 심는다.
+    const args = buildGameLaunchArgs({ ...base, projectId: null, logout: true });
+    expect(args).not.toContain('-artel-project');
+    expect(args).toContain('-artel-logout');
   });
 
   it('renders -artel-secure as the string "true" for an https server', () => {

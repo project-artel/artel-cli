@@ -58,11 +58,6 @@ export function isEnoentError(error: unknown): boolean {
   );
 }
 
-/**
- * `game/start-flow.ts` 와 `game/logout-flow.ts` 가 함께 쓴다. spawn 실패를 두 error code 로
- * 나눈다 — 경로가 없거나 실행 권한이 없는 흔한 실수(`game_build_not_found`)와 그 밖의
- * 실패(`game_launch_failed`)를 구분해야 사용자가 무엇을 고칠지 알 수 있다.
- */
 /** 토큰을 나르는 환경 변수. SDK 가 이 이름으로 읽는다. */
 const SDK_TOKEN_VAR = 'ARTEL_SDK_TOKEN';
 
@@ -89,6 +84,11 @@ function withWslEnv(env: NodeJS.ProcessEnv, build: string): NodeJS.ProcessEnv {
   return { ...env, WSLENV: [...names, SDK_TOKEN_VAR].join(':') };
 }
 
+/**
+ * `game/start-flow.ts` 와 `game/logout-flow.ts` 가 함께 쓴다. spawn 실패를 두 error code 로
+ * 나눈다 — 경로가 없거나 실행 권한이 없는 흔한 실수(`game_build_not_found`)와 그 밖의
+ * 실패(`game_launch_failed`)를 구분해야 사용자가 무엇을 고칠지 알 수 있다.
+ */
 export async function spawnGame(
   spawn: GameProcessSpawner,
   build: string,
@@ -100,7 +100,14 @@ export async function spawnGame(
     return await spawn(
       build,
       args,
-      withWslEnv({ ...processEnv, [SDK_TOKEN_VAR]: sdkToken }, build),
+      // 빈 토큰이면 변수 자체를 두지 않는다. 빈 값을 실으면 SDK 가 "토큰이 왔는데 비어 있다"
+      // 는 오류를 적는데, 로그아웃 실행은 토큰이 없는 것이 정상이다.
+      withWslEnv(
+        sdkToken === ''
+          ? { ...processEnv }
+          : { ...processEnv, [SDK_TOKEN_VAR]: sdkToken },
+        build,
+      ),
     );
   } catch (error) {
     if (isEnoentError(error)) {

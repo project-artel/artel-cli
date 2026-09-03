@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { CliError } from '../errors.js';
-import { mintSdkToken, type FetchLike } from '../http/client.js';
+import { type FetchLike } from '../http/client.js';
 import { buildGameLaunchArgs, deriveGameServerAddress } from './launch-args.js';
 import { generateGameLogPath } from './log-file.js';
 import {
@@ -67,14 +67,13 @@ export async function runGameLogoutFlow(
   const logFilePath = deps.generateLogPath();
   await fs.mkdir(path.dirname(logFilePath), { recursive: true });
 
-  deps.notify('Requesting an SDK token…');
-  const minted = await mintSdkToken(options.apiBaseUrl, options.cliToken, deps.fetchImpl);
-
+  // 토큰도 프로젝트도 넘기지 않는다. SDK 는 지우고 나서 심으므로, 둘 중 하나라도 실으면
+  // 지운 자리에 그대로 다시 들어가 로그아웃이 로그인이 된다 — 2026-09-03 실행에서 밟았다.
   const args = buildGameLaunchArgs({
     serverAddress,
     secure,
     frontendUrl: options.consoleBaseUrl,
-    projectId: options.projectId,
+    projectId: null,
     logFilePath,
     width: options.width,
     height: options.height,
@@ -82,7 +81,7 @@ export async function runGameLogoutFlow(
   });
 
   deps.notify(`Launching ${options.build} briefly to clear its stored session…`);
-  const child = await spawnGame(deps.spawn, options.build, args, options.processEnv, minted.token);
+  const child = await spawnGame(deps.spawn, options.build, args, options.processEnv, '');
 
   const exit = await waitForExit(child, options.logoutTimeoutMs);
   if (exit === null) {

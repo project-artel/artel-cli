@@ -20,7 +20,11 @@ export interface GameLaunchArgsOptions {
   serverAddress: string;
   secure: boolean;
   frontendUrl: string;
-  projectId: string;
+  /**
+   * 로그인시킬 프로젝트. `logout` 실행에서는 없다 — 지우러 가는 실행에 프로젝트를 실으면
+   * SDK 가 지운 자리에 그것을 도로 심는다.
+   */
+  projectId: string | null;
   logFilePath: string;
   width: number;
   height: number;
@@ -44,8 +48,6 @@ export function buildGameLaunchArgs(options: GameLaunchArgsOptions): string[] {
     String(options.secure),
     '-artel-frontend',
     options.frontendUrl,
-    '-artel-project',
-    options.projectId,
     '-logFile',
     options.logFilePath,
     '-screen-width',
@@ -53,6 +55,10 @@ export function buildGameLaunchArgs(options: GameLaunchArgsOptions): string[] {
     '-screen-height',
     String(options.height),
   ];
+
+  if (options.projectId !== null) {
+    args.push('-artel-project', options.projectId);
+  }
   if (options.logout) {
     args.push('-artel-logout');
   }
