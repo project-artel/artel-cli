@@ -6,35 +6,60 @@ PR should let reviewer understand intent, verify evidence, and identify risk wit
 
 ## Before Opening
 
-- Confirm issue acceptance criteria.
+- Confirm acceptance criteria from Jira or the user request.
 - Update plan to reflect final implementation.
 - Review full diff against default branch.
 - Remove debug code and unrelated churn.
 - Run required validation.
 - Confirm migrations, configuration, and rollback needs.
 
+## Language
+
+Write the pull request title and body in Korean. Keep the Conventional Commit
+type and optional scope in English.
+
+Keep verbatim in English regardless: code identifiers, file paths, commands,
+log output, error strings, API names, technical terminology, and the section
+headings from the body template below.
+
+Which words to reach for is settled by `## Word Choice` in
+[`coding-style.md`](coding-style.md), and that rule covers pull request and
+issue bodies as much as comments: never invent a Korean word for a technical
+meaning, pick the word that is correct rather than the one that sounds
+considered, and name the thing and the number instead of reaching for a figure
+of speech.
+
 ## Title
 
-Use Conventional Commit format with a Korean summary:
+Use Conventional Commit format, with the summary in Korean:
 
 ```text
-<type>(<optional-scope>): <한글 요약>
+<type>(<optional-scope>): <한글 변경 사항>
 ```
 
-A title is a label for the change, not a claim about it. Name the thing that
-changed and say what happened to it, and give the number when there is one.
-Never write a title a reviewer has to interpret: an aphorism, a figure of
-speech, or a sentence stating an insight rather than an edit cannot be checked
-against the diff.
+## Assignee and Labels
 
-| 나쁨 | 좋음 |
+Every PR carries an assignee and exactly one type label. Set both when opening
+the PR rather than leaving them for review time.
+
+- Assignee: the PR author, unless another person owns the merge.
+- Label: derived from the Conventional Commit type in the title.
+
+| Title type | Label |
 | --- | --- |
-| `fix(qa): 런은 agent 가 물어봐서 나아간다` | `fix(qa): QA 런에 tool 호출 상한과 벽시계 마감을 둔다` |
-| `refactor: 구조를 데이터로` | `refactor(qa): loop 상한과 vision 여부를 QaArchSpec 필드로 옮긴다` |
-| `feat: 지식은 두 번 모델을 거친다` | `feat(knowledge): knowledge 항목마다 검색용 질문을 생성해 색인한다` |
+| `feat` | `enhancement` |
+| `fix` | `bug` |
+| `docs` | `documentation` |
+| `chore` | `chore` |
+| `refactor` | `refactor` |
+| `infra` | `infra` |
 
-Write the body in Korean as well. Keep the template headings, code identifiers,
-API names, CLI commands, and error strings in their original form.
+```bash
+gh pr create --draft --assignee @me --label enhancement ...
+```
+
+Create the label in the repository when it does not exist yet. Do not
+substitute a label that carries a different meaning.
 
 ## Body Template
 
@@ -45,6 +70,9 @@ API names, CLI commands, and error strings in their original form.
 
 ## Example
 
+## Code Walkthrough
+- `path/to/unit.ext:12` — what the unit now does, and why it had to change
+
 ## Validation
 - [ ] Command or manual check
 
@@ -52,29 +80,14 @@ API names, CLI commands, and error strings in their original form.
 
 ## Rollback
 
-Closes #123
+Jira: ARTEL-123 (omit when no Jira work item exists)
 ```
 
-## Metadata
-
-Set assignee, label, and milestone when creating the PR, not afterwards. An
-unassigned or unlabeled PR does not appear in the boards and filters the team
-uses to find work, so it stalls without anyone noticing.
-
-- **Assignee** — whoever is responsible for landing it. Use `--assignee @me`
-  when that is you.
-- **Label** — at minimum the one matching the change type.
-- **Milestone or project** — when the repository tracks work that way.
-- **Reviewer** — request explicitly rather than relying on default rules.
-
-```bash
-gh pr create --title "<title>" --body-file /tmp/pr-body.md \
-  --assignee @me --label fix --reviewer <handle>
-```
-
-Read the repository's existing labels with `gh label list` before guessing.
-Creating a label that duplicates an existing one with different wording splits
-the boards it was meant to feed.
+`Code Walkthrough` carries one entry per meaningful changed unit — module,
+class, function, migration, or configuration file — anchored with `path:line`.
+State what the unit now does and why the change was necessary. Do not restate
+the diff line by line; the reviewer can read it. Collapse mechanical edits such
+as renames or formatting into a single entry.
 
 ## Example
 
@@ -106,27 +119,15 @@ fixture, or a stubbed dependency demonstrates the shape, not the integration.
 State that in the section itself. A reviewer who assumes end-to-end evidence
 because none was disclaimed is a reviewer the pull request misled.
 
-## Safe Creation
-
-Write generated PR content to a Markdown file before invoking GitHub CLI. Pass
-the file with `--body-file`; do not interpolate multiline content into `--body`.
-This prevents shell quoting, command substitution, and newline damage.
-
-Use a temporary file unless the repository requires the PR draft to be tracked:
-
-```bash
-gh pr create --title "<title>" --body-file /tmp/pr-body.md
-```
-
-After creation, read the remote PR back with `gh pr view` and confirm the title
-and body match the source file. Fix the remote PR before reporting completion if
-content is missing, truncated, or malformed. Remove temporary files after
-successful verification.
-
 ## Review Rules
 
 - Keep PR focused on one coherent outcome.
-- Mark draft while known required work remains.
+- Always create the PR as a draft, even when implementation and validation are
+  complete. With GitHub CLI, pass `--draft` to `gh pr create`.
+- Agents must never mark a PR ready for review. A human must review the draft
+  and manually mark it ready.
+- After creating the draft PR, tell the user that human review and manual
+  ready-for-review transition are required.
 - Respond to each actionable review comment.
 - Resolve threads only after change or explicit agreement.
 - Add new commits during review when history clarity matters.

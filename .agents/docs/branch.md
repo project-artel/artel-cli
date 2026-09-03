@@ -7,37 +7,34 @@ Predictable branch names expose intent and issue linkage without relying on loca
 ## Naming
 
 ```text
-<type>/<issue-number>
+<작업 유형>/<issue summary with spaces replaced by hyphens>-<ISSUE KEY>
 ```
 
 Examples:
 
 ```text
-feat/123
-fix/418
-docs/527
+feat/qa-실행-설정-집계-ARTEL-244
+fix/세션-만료-리다이렉트-ARTEL-251
+docs/에이전트-문서-정리-ARTEL-262
 ```
 
-Allowed types:
-- `feat`: user-visible capability
-- `fix`: defect correction
-- `refactor`: behavior-preserving structure change
-- `perf`: measured performance improvement
-- `test`: test-only change
-- `docs`: documentation-only change
-- `build`: build or dependency change
-- `ci`: automation change
-- `chore`: maintenance not covered above
+The prefix comes from the 작업 유형 field on the Jira issue: `feat`, `fix`,
+`chore`, `docs`, `refactor`, or `infra`. Korean characters stay as they appear
+in the issue summary.
 
-Issue number rules:
-- digits only
-- must reference the primary issue for the branch
-- create or identify the issue before creating the branch
+Issue key rules:
+- exactly one Jira issue key per branch, at the end of the name
+- the issue must exist before the branch does; the key is what ties commits and
+  the PR back to it
+- moving the issue to 진행 중 creates the branch automatically in repositories
+  wired for it, as described in `workflow.md`. Confirm the branch appeared, and
+  create it by hand with the same name when it did not.
 
 ## Lifecycle
 
-- Branch from repository default branch unless project policy says otherwise.
+- Branch from `origin/main`, this repository's default branch. There is no
+  `develop` branch here.
 - Keep one primary issue per branch.
-- Sync with default branch before final validation when divergence matters.
+- Sync with the default branch before final validation when divergence matters.
 - Never force-push a shared branch without coordination.
 - Delete branch after merge when no follow-up work depends on it.
