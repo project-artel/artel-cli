@@ -131,7 +131,14 @@ function requireNullableString(value: unknown, field: string, endpoint: string):
   return value;
 }
 
-export const SDK_TOKEN_MINT_PATH = '/api/auth/sdk-tokens/mint';
+/**
+ * `SdkTokenController`(ARTEL-788)가 여는 자리. class 레벨 `@RequestMapping` 하나뿐이라
+ * 경로에 동사가 붙지 않는다.
+ *
+ * `/api/auth/sdk/token` 과 헷갈리지 않게 하이픈으로 갈라져 있다. 그쪽은 permitAll 이고
+ * 이쪽은 인증이 필요하다 — 두 경로를 헷갈리면 인증 규칙을 헷갈리는 것이다.
+ */
+export const SDK_TOKEN_MINT_PATH = '/api/auth/sdk-tokens';
 
 /** `SdkTokenResponse`(`SdkAuthDtos.kt`)와 같은 모양이다. `game start`·`game logout` 이 매번 새로 낸다. */
 export interface SdkTokenMintResponse {
