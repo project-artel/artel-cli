@@ -11,24 +11,59 @@ export interface CliConfig {
   consoleBaseUrl: string;
 }
 
+/**
+ * `--api-url`/`--console-url` 로 받은 값. 있으면 같은 이름의 환경 변수보다 이긴다.
+ * `resolveConfig` 호출부마다 두 인자를 따로 threading 하지 않으려고 하나로 묶었다.
+ */
+export interface ConfigOverrides {
+  apiBaseUrl?: string | undefined;
+  consoleBaseUrl?: string | undefined;
+}
+
 function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
+}
+
+/** 절대 http/https URL 이 아니면 나중에 알 수 없는 network error 로 죽는 대신 여기서 거절한다. */
+function assertAbsoluteHttpUrl(value: string, sourceLabel: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new CliError(
+      'invalid_base_url',
+      `${sourceLabel} is "${value}", which is not a valid URL. Use an absolute URL such as https://api.example.com.`,
+    );
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new CliError(
+      'invalid_base_url',
+      `${sourceLabel} is "${value}", which is a "${parsed.protocol}" URL. Use an absolute http:// or https:// URL.`,
+    );
+  }
 }
 
 /**
  * orchestration API 의 운영 host 는 orchestration 저장소에도 artel-home 저장소에도
  * 문자열로 적혀 있지 않다(artel-home 은 `VITE_ORCHESTRATION_URL` 로 주입받는다).
  * 기본값을 지어내면 staging token 을 운영에 쏘는 사고가 조용히 일어나므로,
- * 기본값이 정해질 때까지 `ARTEL_API_BASE_URL` 을 필수로 둔다.
+ * 기본값이 정해질 때까지 `--api-url`/`ARTEL_API_BASE_URL` 을 필수로 둔다.
  */
-export function resolveApiBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
-  const configured = env.ARTEL_API_BASE_URL?.trim();
+export function resolveApiBaseUrl(
+  env: NodeJS.ProcessEnv = process.env,
+  override?: string,
+): string {
+  const flagValue = override?.trim();
+  const envValue = env.ARTEL_API_BASE_URL?.trim();
+  const configured = flagValue || envValue;
   if (!configured) {
     throw new CliError(
       'missing_api_base_url',
-      'ARTEL_API_BASE_URL is not set. The orchestration API host has no default yet, so set it explicitly (for example ARTEL_API_BASE_URL=http://localhost:8080).',
+      'The orchestration API host is not set. The orchestration API host has no default yet, so pass --api-url or set ARTEL_API_BASE_URL explicitly (for example --api-url http://localhost:8080).',
     );
   }
+  const sourceLabel = flagValue ? '--api-url' : 'ARTEL_API_BASE_URL';
+  assertAbsoluteHttpUrl(configured, sourceLabel);
   return normalizeBaseUrl(configured);
 }
 
@@ -53,30 +88,41 @@ function isLoopback(baseUrl: string): boolean {
  *
  * 그래서 API 가 이 기계를 가리키는데 console 을 말해 주지 않은 경우는 기본값으로 때우지 않고
  * 거절한다. 운영 API 를 쓰는 흔한 경우에는 기본값이 맞으므로 그대로 둔다.
+ *
+ * `apiBaseUrl` 은 이미 `--api-url`/`ARTEL_API_BASE_URL` 중 어느 쪽에서 왔든 정규화가 끝난
+ * 유효 값이다 — 이 함수는 그 출처를 다시 구분하지 않고 그 값 자체로 loopback 여부만 본다.
  */
 export function resolveConsoleBaseUrl(
   env: NodeJS.ProcessEnv = process.env,
   apiBaseUrl?: string,
+  override?: string,
 ): string {
-  const configured = env.ARTEL_CONSOLE_BASE_URL?.trim();
+  const flagValue = override?.trim();
+  const envValue = env.ARTEL_CONSOLE_BASE_URL?.trim();
+  const configured = flagValue || envValue;
   if (configured) {
+    const sourceLabel = flagValue ? '--console-url' : 'ARTEL_CONSOLE_BASE_URL';
+    assertAbsoluteHttpUrl(configured, sourceLabel);
     return normalizeBaseUrl(configured);
   }
 
   if (apiBaseUrl !== undefined && isLoopback(apiBaseUrl)) {
     throw new CliError(
       'missing_console_base_url',
-      `ARTEL_API_BASE_URL is ${apiBaseUrl}, which is this machine, but ARTEL_CONSOLE_BASE_URL is not set and would default to ${DEFAULT_CONSOLE_BASE_URL}. A login code issued by that console lives in its own server and the local API cannot consume it, so set ARTEL_CONSOLE_BASE_URL to the console that talks to this API (for example ARTEL_CONSOLE_BASE_URL=http://localhost:5173).`,
+      `The API base URL is ${apiBaseUrl}, which is this machine, but no console base URL was given and it would default to ${DEFAULT_CONSOLE_BASE_URL}. A login code issued by that console lives in its own server and the local API cannot consume it, so pass --console-url or set ARTEL_CONSOLE_BASE_URL to the console that talks to this API (for example --console-url http://localhost:5173).`,
     );
   }
 
   return normalizeBaseUrl(DEFAULT_CONSOLE_BASE_URL);
 }
 
-export function resolveConfig(env: NodeJS.ProcessEnv = process.env): CliConfig {
-  const apiBaseUrl = resolveApiBaseUrl(env);
+export function resolveConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  overrides: ConfigOverrides = {},
+): CliConfig {
+  const apiBaseUrl = resolveApiBaseUrl(env, overrides.apiBaseUrl);
   return {
     apiBaseUrl,
-    consoleBaseUrl: resolveConsoleBaseUrl(env, apiBaseUrl),
+    consoleBaseUrl: resolveConsoleBaseUrl(env, apiBaseUrl, overrides.consoleBaseUrl),
   };
 }

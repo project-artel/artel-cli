@@ -220,6 +220,30 @@ describe('exit codes and reported values', () => {
     expect(code).toBe(EXIT_FAILURE);
     expect(sink.lastJson<ErrorEnvelope>().error.code).toBe('missing_api_base_url');
   });
+
+  it('still fires the loopback pairing rule when --api-url supplies a loopback host', async () => {
+    // `--api-url` 이 environment variable 없이 이 명령까지 실제로 도달하는지, 그리고
+    // 도달한 값이 loopback pairing 검사도 그대로 거치는지를 CLI 전체 경로로 확인한다.
+    const sink = createMemorySink();
+    const code = await runCli(
+      ['auth', 'login', '--api-url', 'http://localhost:9', '--json'],
+      sink,
+      { ARTEL_CONFIG_DIR: temp.configDir },
+    );
+
+    expect(code).toBe(EXIT_FAILURE);
+    expect(sink.lastJson<ErrorEnvelope>().error.code).toBe('missing_console_base_url');
+  });
+
+  it('rejects a malformed --api-url', async () => {
+    const sink = createMemorySink();
+    const code = await runCli(['auth', 'login', '--api-url', 'not-a-url', '--json'], sink, {
+      ARTEL_CONFIG_DIR: temp.configDir,
+    });
+
+    expect(code).toBe(EXIT_FAILURE);
+    expect(sink.lastJson<ErrorEnvelope>().error.code).toBe('invalid_base_url');
+  });
 });
 
 describe.runIf(enforcesFileMode())('error envelope', () => {

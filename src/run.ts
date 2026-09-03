@@ -89,18 +89,30 @@ export async function runCli(
       'days until the token expires, or "never"',
       String(DEFAULT_EXPIRES_IN_DAYS),
     )
-    .action(async (options: { json: boolean; name: string; expiresInDays: string }) => {
-      json = options.json;
-      await runAuthLogin(
-        {
-          json: options.json,
-          name: options.name,
-          expiresInDays: parseExpiresInDays(options.expiresInDays),
-        },
-        sink,
-        env,
-      );
-    });
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', 'console base URL; overrides ARTEL_CONSOLE_BASE_URL')
+    .action(
+      async (options: {
+        json: boolean;
+        name: string;
+        expiresInDays: string;
+        apiUrl?: string | undefined;
+        consoleUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runAuthLogin(
+          {
+            json: options.json,
+            name: options.name,
+            expiresInDays: parseExpiresInDays(options.expiresInDays),
+            apiUrl: options.apiUrl,
+            consoleUrl: options.consoleUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
 
   auth
     .command('status')
@@ -135,6 +147,8 @@ export async function runCli(
       String(DEFAULT_REGISTRATION_TIMEOUT_MS / 1_000),
     )
     .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', 'console base URL; overrides ARTEL_CONSOLE_BASE_URL')
     .action(
       async (options: {
         project: string;
@@ -143,6 +157,8 @@ export async function runCli(
         height: string;
         timeout: string;
         json: boolean;
+        apiUrl?: string | undefined;
+        consoleUrl?: string | undefined;
       }) => {
         json = options.json;
         await runGameStart(
@@ -153,6 +169,8 @@ export async function runCli(
             width: parsePositiveInt(options.width, '--width'),
             height: parsePositiveInt(options.height, '--height'),
             timeoutSeconds: parsePositiveInt(options.timeout, '--timeout'),
+            apiUrl: options.apiUrl,
+            consoleUrl: options.consoleUrl,
           },
           sink,
           env,
@@ -173,6 +191,8 @@ export async function runCli(
       String(DEFAULT_LOGOUT_TIMEOUT_MS / 1_000),
     )
     .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', 'console base URL; overrides ARTEL_CONSOLE_BASE_URL')
     .action(
       async (options: {
         project: string;
@@ -181,6 +201,8 @@ export async function runCli(
         height: string;
         timeout: string;
         json: boolean;
+        apiUrl?: string | undefined;
+        consoleUrl?: string | undefined;
       }) => {
         json = options.json;
         await runGameLogout(
@@ -191,6 +213,8 @@ export async function runCli(
             width: parsePositiveInt(options.width, '--width'),
             height: parsePositiveInt(options.height, '--height'),
             timeoutSeconds: parsePositiveInt(options.timeout, '--timeout'),
+            apiUrl: options.apiUrl,
+            consoleUrl: options.consoleUrl,
           },
           sink,
           env,

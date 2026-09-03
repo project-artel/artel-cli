@@ -17,6 +17,10 @@ export interface GameLogoutOptions {
   width: number;
   height: number;
   timeoutSeconds: number;
+  /** `--api-url`. 있으면 `ARTEL_API_BASE_URL` 보다 이긴다. */
+  apiUrl?: string | undefined;
+  /** `--console-url`. 있으면 `ARTEL_CONSOLE_BASE_URL` 보다 이긴다. */
+  consoleUrl?: string | undefined;
 }
 
 export async function runGameLogout(
@@ -26,7 +30,10 @@ export async function runGameLogout(
   makeDeps: (notify: (message: string) => void) => GameLogoutDeps = (notify) =>
     defaultGameLogoutDeps(notify, env),
 ): Promise<void> {
-  const config = resolveConfig(env);
+  const config = resolveConfig(env, {
+    apiBaseUrl: options.apiUrl,
+    consoleBaseUrl: options.consoleUrl,
+  });
 
   const notify = (message: string): void => {
     sink.err(message);

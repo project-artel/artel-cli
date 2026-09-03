@@ -17,6 +17,10 @@ export interface GameStartOptions {
   width: number;
   height: number;
   timeoutSeconds: number;
+  /** `--api-url`. 있으면 `ARTEL_API_BASE_URL` 보다 이긴다. */
+  apiUrl?: string | undefined;
+  /** `--console-url`. 있으면 `ARTEL_CONSOLE_BASE_URL` 보다 이긴다. */
+  consoleUrl?: string | undefined;
 }
 
 /** 사용자는 CLI 자격 증명만 쥐고 있으면 된다 — SDK token 은 `game/start-flow.ts` 가 스스로 낸다. */
@@ -27,7 +31,10 @@ export async function runGameStart(
   makeDeps: (notify: (message: string) => void) => GameStartDeps = (notify) =>
     defaultGameStartDeps(notify, env),
 ): Promise<void> {
-  const config = resolveConfig(env);
+  const config = resolveConfig(env, {
+    apiBaseUrl: options.apiUrl,
+    consoleBaseUrl: options.consoleUrl,
+  });
 
   // 진행 상황은 stderr 로 간다. `--json` 을 켠 쪽의 stdout 에는 payload 한 줄만 남아야 한다.
   const notify = (message: string): void => {
