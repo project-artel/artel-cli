@@ -2,14 +2,14 @@
 
 The command line interface for the ARTEL platform.
 
-> Early work. `artel auth status`, `artel auth logout`, `artel game start` and
-> `artel game logout` work today, and `ARTEL_TOKEN` is the credential path CI
-> should use. `artel auth login` is built against a
-> `POST /api/auth/cli-tokens/exchange` endpoint the orchestration server does
-> not have yet, and `artel game start`/`artel game logout` are built against a
-> not-yet-settled SDK token mint endpoint — both fail, saying exactly that,
-> until the server side lands. The rest of the commands below are the shape
-> being built toward.
+> Early work. `artel auth status`, `artel auth logout`, the whole `artel qa`
+> group, `artel game start` and `artel game logout` work today, and
+> `ARTEL_TOKEN` is the credential path CI should use. `artel auth login` is
+> built against a `POST /api/auth/cli-tokens/exchange` endpoint the
+> orchestration server does not have yet, and `artel game start`/`artel game
+> logout` are built against a not-yet-settled SDK token mint endpoint — both
+> fail, saying exactly that, until the server side lands. `artel projects list`
+> below is the shape being built toward.
 
 ## What it is for
 
@@ -22,6 +22,8 @@ artel projects list
 artel game start --build ./Build/Game.exe --project <id>
 artel qa run --test-run <id> --instance <id>
 artel qa watch <run id>
+artel qa show <run id>
+artel qa cancel <run id>
 artel qa diff <config> <config>
 artel game logout --build ./Build/Game.exe --project <id>
 ```
@@ -88,6 +90,61 @@ the game process itself can clear it. This command launches the build with the
 same arguments plus `-artel-logout`, waits for it to exit on its own, and
 reports the exit code — killing it if it does not exit within `--timeout`
 seconds (default 30).
+
+## Running QA
+
+**`artel qa run --test-run <id> --instance <id>`** starts a QA run and, unless
+you pass `--no-wait`, follows it until the agent reaches a verdict. Four flags
+pin the axes that make two runs comparable: `--model`, `--prompt-version`,
+`--reasoning-effort` and `--arch` (a JSON object, or `@path` naming a file that
+holds one). They are the same four axes `artel qa diff` selects on, so a run you
+just watched can be compared straight away. Leave one out and the server picks;
+what it picked comes back in the result either way.
+
+**The exit code is the verdict.** `0` only when the run passed. Failed, cancelled
+and *unknown* are all `1`. Unknown is the case worth stating: a run whose socket
+died never sends a summary, so it has no verdict at all — not a verdict of zero.
+Calling that `0` would let a run that never really finished go green in CI. The
+same rule runs `artel qa watch`, which attaches to a run already going.
+`artel qa show` never applies it: reading a run is a different question from
+whether the game passed, so it exits `0` whatever the verdict.
+
+`--json` on a watching command puts the final result on stdout as one line, the
+same shape `artel qa show` prints, and streams the progress to stderr as one
+JSON object per line. Without `--json` the same events are human lines on
+stderr. Both come from the same event, so the two can never disagree.
+
+**When the event stream drops,** the CLI reconnects from the last event it saw,
+five times, backing off from 500ms to 8s, and resets that count whenever an
+event arrives. A reconnect loses nothing: the server resumes from the event id.
+If the reconnects run out, the CLI asks the server once more how the run is
+doing. Already finished — the result is read from the run's log and reported
+normally, because a dead socket does not change what the agent decided. Still
+going — it fails with `qa_watch_disconnected` and says the run keeps going on
+the server. A dropped connection is never reported as a failed test, and never
+as a passing one. `--timeout <seconds>` caps the whole wait (default one hour,
+`0` for no cap) so a stuck run cannot hold a CI job open forever.
+
+**`artel qa cancel <run id>`** stops a run and frees its game instance.
+Scenarios it never reached have no verdict — unknown, not failed.
+
+**`artel qa diff <base> <target>`** puts two configurations side by side. Each
+side is a comma-separated selector over the same four axes, written with the
+field names the API uses:
+
+```
+artel qa diff \
+  'model=openai/gpt-5.6-luna,promptVersion=v15' \
+  'model=openai/gpt-5.6-luna,promptVersion=v16' --project <id>
+```
+
+An axis you leave out matches every value of it, and the matching cells are
+added together. That is safe only because `/api/qa-stats` returns sums rather
+than ratios: sums can be added, ratios cannot. The CLI keeps that discipline —
+`--json` carries the two sums and their difference, not the rendered table, and
+every rate the human table prints is derived from those sums with its
+denominator shown next to it. A cell whose axes are unknown (a run from before
+the server recorded them) never matches a selector that names an axis.
 
 ## Two things worth knowing before automating a run
 
