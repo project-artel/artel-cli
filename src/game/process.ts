@@ -63,6 +63,32 @@ export function isEnoentError(error: unknown): boolean {
  * 나눈다 — 경로가 없거나 실행 권한이 없는 흔한 실수(`game_build_not_found`)와 그 밖의
  * 실패(`game_launch_failed`)를 구분해야 사용자가 무엇을 고칠지 알 수 있다.
  */
+/** 토큰을 나르는 환경 변수. SDK 가 이 이름으로 읽는다. */
+const SDK_TOKEN_VAR = 'ARTEL_SDK_TOKEN';
+
+/**
+ * WSL 에서 Windows 실행 파일을 띄울 때 [SDK_TOKEN_VAR] 이 건너가게 `WSLENV` 를 채운다.
+ *
+ * 리눅스 환경 변수는 기본적으로 Windows 프로세스에 전달되지 않는다. `WSLENV` 에 이름을
+ * 적은 것만 건너간다. 이것 없이는 게임이 토큰을 못 받고, 등록이 401 로 떨어지면서
+ * "인자를 줬는데 왜 로그인이 안 되지" 로 보인다 — 2026-09-03 실제 실행에서 밟았다.
+ *
+ * 이미 있는 `WSLENV` 는 지우지 않고 뒤에 덧붙인다. 그 값은 사용자나 다른 도구의 것이다.
+ */
+function withWslEnv(env: NodeJS.ProcessEnv, build: string): NodeJS.ProcessEnv {
+  if (process.platform !== 'linux' || !build.toLowerCase().endsWith('.exe')) {
+    return env;
+  }
+
+  const existing = env.WSLENV ?? '';
+  const names = existing.split(':').filter((name) => name.length > 0);
+  if (names.some((name) => name.split('/')[0] === SDK_TOKEN_VAR)) {
+    return env;
+  }
+
+  return { ...env, WSLENV: [...names, SDK_TOKEN_VAR].join(':') };
+}
+
 export async function spawnGame(
   spawn: GameProcessSpawner,
   build: string,
@@ -71,7 +97,11 @@ export async function spawnGame(
   sdkToken: string,
 ): Promise<SpawnedGameProcess> {
   try {
-    return await spawn(build, args, { ...processEnv, ARTEL_SDK_TOKEN: sdkToken });
+    return await spawn(
+      build,
+      args,
+      withWslEnv({ ...processEnv, [SDK_TOKEN_VAR]: sdkToken }, build),
+    );
   } catch (error) {
     if (isEnoentError(error)) {
       throw new CliError(

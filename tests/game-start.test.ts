@@ -244,10 +244,37 @@ describe('artel game start (command layer)', () => {
         timeoutSeconds: 5,
       },
       sink,
-      { ARTEL_CONFIG_DIR: temp.configDir, ARTEL_API_BASE_URL: 'http://127.0.0.1:1' },
+      // console 주소까지 준다. 이 테스트가 보는 것은 자격증명이지 설정이 아니고,
+      // loopback API 에 console 을 비워 두면 설정 쪽이 먼저 걸린다.
+      {
+        ARTEL_CONFIG_DIR: temp.configDir,
+        ARTEL_API_BASE_URL: 'http://127.0.0.1:1',
+        ARTEL_CONSOLE_BASE_URL: 'http://127.0.0.1:5173',
+      },
     ).catch((error: unknown) => error)) as CliError;
 
     expect(failure.code).toBe('no_credential');
+  });
+
+  it('refuses a loopback API paired with the default production console', async () => {
+    const sink = createMemorySink();
+    const failure = (await runGameStart(
+      {
+        json: true,
+        project: '42',
+        build: '/games/my-game',
+        width: 1280,
+        height: 720,
+        timeoutSeconds: 5,
+      },
+      sink,
+      { ARTEL_CONFIG_DIR: temp.configDir, ARTEL_API_BASE_URL: 'http://localhost:8080' },
+    ).catch((error: unknown) => error)) as CliError;
+
+    // 그 짝으로는 로그인 왕복이 성립할 수 없다. 기본값으로 때우면 게임에는
+    // `-artel-frontend https://artel.kr` 이 박히고, 오버레이가 로그인을 물어야 하는
+    // 순간에야 드러난다.
+    expect(failure.code).toBe('missing_console_base_url');
   });
 
   it('emits exactly its contracted --json keys on success', async () => {

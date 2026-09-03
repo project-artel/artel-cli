@@ -16,6 +16,7 @@ export const ERROR_CODES = [
   'credential_file_unreadable',
   'credential_file_version',
   'missing_api_base_url',
+  'missing_console_base_url',
   'network_error',
   'server_error',
   'internal_error',
