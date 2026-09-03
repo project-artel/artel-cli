@@ -22,21 +22,34 @@ Fill this document during project initialization. Agents must verify commands ag
   - `src/commands/auth/` — `login`, `status`, `logout`. These call `credentials`
     and `auth` and hand the result to `output`; they never touch `node:fs` or
     `node:http` directly.
+  - `src/commands/game/` — `start`, `logout`. Same rule: they call
+    `credentials` and `game`, and hand the result to `output`.
   - `src/credentials/` — `paths` (where the file lives), `store` (0600 read,
     write and remove), `resolve` (`ARTEL_TOKEN` before the file), `types`.
   - `src/auth/` — `pkce`, `loopback` (the `127.0.0.1` callback listener),
     `browser`, `login-flow` (the dependency injection point that lets the login
     tests run with no browser and no server).
-  - `src/http/` — `client` (the CLI token exchange call), `errors`.
+  - `src/game/` — `launch-args` (the `-artel-*` argv and the `host:port`
+    derived from `apiBaseUrl`), `process` (the injectable child-process
+    spawner, `game start`/`game logout`'s equivalent of `openBrowser`),
+    `registration` (diffs two `game-instances` snapshots to find the one this
+    launch registered), `log-file` (`-logFile` path under `~/.artel/logs`),
+    `start-flow` and `logout-flow` (the two orchestrations, each a dependency
+    injection point like `auth/login-flow`).
+  - `src/http/` — `client` (the CLI token exchange call and the SDK token mint
+    call), `gameInstances` (lists a project's game instances), `errors`.
   - `src/output/` — `contract` (the `--json` shapes), `envelope`, `human`.
   - `src/config.ts` — `ARTEL_API_BASE_URL` and `ARTEL_CONSOLE_BASE_URL`.
-- Dependency direction: `cli` → `run` → `commands` → {`auth`, `credentials`,
-  `http`} → `config`, with no edge back. `credentials` does not import `http`.
-  `http/client` takes a token string; it never resolves a credential itself.
-  `output` cannot receive a `ResolvedCredential` at all: it takes
-  `CredentialReport`, whose `token?: never` field makes the assignment a
+- Dependency direction: `cli` → `run` → `commands` → {`auth`, `game`,
+  `credentials`, `http`} → `config`, with no edge back. `credentials` does not
+  import `http`. `http/client` takes a token string; it never resolves a
+  credential itself. `output` cannot receive a `ResolvedCredential` at all: it
+  takes `CredentialReport`, whose `token?: never` field makes the assignment a
   compile error. "Never print the token" is enforced by the type checker rather
-  than by discipline.
+  than by discipline. The same holds for the SDK token: it exists only inside
+  `game/start-flow.ts` and `game/logout-flow.ts`, which pass it to the child
+  process's environment (`ARTEL_SDK_TOKEN`) and nowhere else — the user only
+  ever holds the CLI credential.
 - External systems:
   - the orchestration server's end-user API (REST, plus Server-Sent Events for
     QA run progress). `insomnia-api` in the sibling repository holds its OpenAPI

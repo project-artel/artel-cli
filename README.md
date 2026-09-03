@@ -2,10 +2,12 @@
 
 The command line interface for the ARTEL platform.
 
-> Early work. `artel auth status` and `artel auth logout` work today, and
-> `ARTEL_TOKEN` is the credential path CI should use. `artel auth login` is
-> built against a `POST /api/auth/cli-tokens/exchange` endpoint the
-> orchestration server does not have yet, so it fails — saying exactly that —
+> Early work. `artel auth status`, `artel auth logout`, `artel game start` and
+> `artel game logout` work today, and `ARTEL_TOKEN` is the credential path CI
+> should use. `artel auth login` is built against a
+> `POST /api/auth/cli-tokens/exchange` endpoint the orchestration server does
+> not have yet, and `artel game start`/`artel game logout` are built against a
+> not-yet-settled SDK token mint endpoint — both fail, saying exactly that,
 > until the server side lands. The rest of the commands below are the shape
 > being built toward.
 
@@ -17,10 +19,11 @@ the console in a browser.
 ```
 artel auth login
 artel projects list
-artel run --build ./Build/Game.exe --project <id>
+artel game start --build ./Build/Game.exe --project <id>
 artel qa run --test-run <id> --instance <id>
 artel qa watch <run id>
 artel qa diff <config> <config>
+artel game logout --build ./Build/Game.exe --project <id>
 ```
 
 Every command that reports a result also takes `--json`, because the reader is
@@ -57,6 +60,34 @@ signed in" is a successful report, so it exits `0`.
 `artel auth logout` deletes the local file and says so. It does **not** revoke
 anything on the server — `--json` carries `"serverSideRevoked": false` to say
 that in a form a program can read. Revoke a token in the console.
+
+## Launching a game
+
+**`artel game start --build <path> --project <id>`.** It signs the build in
+without the user ever handling an SDK token: this command exchanges the CLI
+credential for one, and passes it to the build only through the child
+process's `ARTEL_SDK_TOKEN` environment variable — never on the command line,
+which is readable by every other user on the machine through `ps`. Everything
+else goes as launch arguments: `-artel-server <host:port>` and
+`-artel-secure <true|false>` (both derived from `ARTEL_API_BASE_URL`),
+`-artel-frontend <url>` (`ARTEL_CONSOLE_BASE_URL`), `-artel-project <id>`, and
+`-logFile <path>` pointing at a fresh file under `~/.artel/logs` so a failure
+can name exactly where to look. `--width`/`--height` set the window size
+(`-screen-width`/`-screen-height`); the launch never carries `-batchmode` (see
+below).
+
+The command waits until the build registers with the server, then prints the
+resulting game instance id and exits — the build itself keeps running. That id
+is what the QA commands (not yet built) take to address this run. If
+registration does not happen within `--timeout` seconds (default 60), or the
+build exits first, the error says which and names the log file.
+
+**`artel game logout --build <path> --project <id>`.** The session lives in
+the game's own platform secret store, not in a file this CLI controls, so only
+the game process itself can clear it. This command launches the build with the
+same arguments plus `-artel-logout`, waits for it to exit on its own, and
+reports the exit code — killing it if it does not exit within `--timeout`
+seconds (default 30).
 
 ## Two things worth knowing before automating a run
 

@@ -1,4 +1,10 @@
-import type { LoginPayload, LogoutPayload, StatusPayload } from './contract.js';
+import type {
+  GameLogoutPayload,
+  GameStartPayload,
+  LoginPayload,
+  LogoutPayload,
+  StatusPayload,
+} from './contract.js';
 import type { OutputSink } from './envelope.js';
 
 /**
@@ -55,6 +61,32 @@ export function printLogout(sink: OutputSink, payload: LogoutPayload): void {
   sink.out(
     'This did not revoke anything on the server. The token stays valid until it expires or you revoke it in the console.',
   );
+}
+
+export function printGameStart(sink: OutputSink, payload: GameStartPayload): void {
+  sink.out(`Registered as game instance ${payload.instanceId}.`);
+  sink.out(`  project        ${payload.projectId}`);
+  sink.out(`  build          ${payload.build}`);
+  sink.out(
+    `  server         ${payload.serverAddress}${payload.secure ? ' (secure)' : ' (insecure)'}`,
+  );
+  sink.out(`  frontend       ${payload.frontendUrl}`);
+  sink.out(`  log file       ${payload.logFilePath}`);
+  sink.out(`  pid            ${payload.pid ?? '-'}`);
+  sink.out(
+    'The game keeps running after this command exits. Pass the instance id above to the QA commands.',
+  );
+}
+
+export function printGameLogout(sink: OutputSink, payload: GameLogoutPayload): void {
+  sink.out(
+    `Launched ${payload.build} with -artel-logout and let it exit (code ${payload.exitCode ?? '-'}).`,
+  );
+  sink.out(
+    "The session lives in the game's own platform secret store, not in a file the CLI controls, so only the game process itself can clear it — that is why this command launches the build briefly instead of deleting anything locally.",
+  );
+  sink.out(`  project        ${payload.projectId}`);
+  sink.out(`  log file       ${payload.logFilePath}`);
 }
 
 function describeEnvVar(state: StatusPayload['envVarState']): string {

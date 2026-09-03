@@ -117,3 +117,98 @@ function requireString(value: unknown, field: string, endpoint: string): string 
   }
   return value;
 }
+
+function requireNullableString(value: unknown, field: string, endpoint: string): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    throw new CliError(
+      'server_error',
+      `${endpoint} answered with a "${field}" field that is neither a string nor null.`,
+    );
+  }
+  return value;
+}
+
+export const SDK_TOKEN_MINT_PATH = '/api/auth/sdk-tokens/mint';
+
+/** `SdkTokenResponse`(`SdkAuthDtos.kt`)와 같은 모양이다. `game start`·`game logout` 이 매번 새로 낸다. */
+export interface SdkTokenMintResponse {
+  token: string;
+  expiresAt: string | null;
+  refreshToken: string;
+  refreshExpiresAt: string | null;
+  userId: string;
+  displayName: string;
+}
+
+/**
+ * `cli_token` 하나로, SDK 가 쓰는 `aud=artel-sdk` token 을 새로 낸다. 사용자는 CLI 자격
+ * 증명만 쥐고 있고 SDK token 이 존재한다는 것조차 몰라도 된다 — 이 함수가 그 경계다.
+ *
+ * ARTEL-788 이 아직 이 endpoint 를 짓지 않았을 수 있다. 경로가 정해지지 않아 이 상수
+ * 하나만 바꾸면 되게 해 두었다. 404 면 `login_not_supported` 와 같은 패턴으로, 서버에
+ * 무엇이 없는지 정확히 말한다 — 일반 `server_error` 로 뭉개면 사용자는 자기 project id 나
+ * build 경로가 틀린 줄 안다.
+ */
+export async function mintSdkToken(
+  apiBaseUrl: string,
+  cliToken: string,
+  fetchImpl: FetchLike = globalThis.fetch,
+): Promise<SdkTokenMintResponse> {
+  const endpoint = `${apiBaseUrl}${SDK_TOKEN_MINT_PATH}`;
+
+  let response: Response;
+  try {
+    response = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${cliToken}`, accept: 'application/json' },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new CliError(
+      'network_error',
+      `Could not reach ${endpoint}: ${error instanceof Error ? error.message : 'unknown error'}`,
+    );
+  }
+
+  if (response.status === 404) {
+    throw new CliError(
+      'sdk_token_not_supported',
+      `The server at ${apiBaseUrl} does not support minting SDK tokens yet: it has no ${SDK_TOKEN_MINT_PATH} endpoint. "artel game start" and "artel game logout" cannot launch a signed-in build until that endpoint ships.`,
+    );
+  }
+
+  const body = await readBodyText(response);
+  if (!response.ok) {
+    throw toCliError(endpoint, parseHttpFailure(response.status, body));
+  }
+
+  return parseSdkTokenMintResponse(body, endpoint);
+}
+
+function parseSdkTokenMintResponse(body: string, endpoint: string): SdkTokenMintResponse {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw new CliError('server_error', `${endpoint} answered with a body that is not valid JSON.`);
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new CliError(
+      'server_error',
+      `${endpoint} answered with a body that is not a JSON object.`,
+    );
+  }
+
+  const fields = parsed as Partial<Record<keyof SdkTokenMintResponse, unknown>>;
+  return {
+    token: requireString(fields.token, 'token', endpoint),
+    refreshToken: requireString(fields.refreshToken, 'refreshToken', endpoint),
+    userId: requireString(fields.userId, 'userId', endpoint),
+    displayName: requireString(fields.displayName, 'displayName', endpoint),
+    expiresAt: requireNullableString(fields.expiresAt, 'expiresAt', endpoint),
+    refreshExpiresAt: requireNullableString(fields.refreshExpiresAt, 'refreshExpiresAt', endpoint),
+  };
+}

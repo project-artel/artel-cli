@@ -47,6 +47,32 @@ export interface LogoutPayload {
   serverSideRevoked: false;
 }
 
+export interface GameStartPayload {
+  launched: true;
+  build: string;
+  projectId: string;
+  /** QA 명령들이 대상을 짚는 데 쓰는 값. */
+  instanceId: string;
+  registeredAt: string | null;
+  serverAddress: string;
+  secure: boolean;
+  frontendUrl: string;
+  logFilePath: string;
+  pid: number | null;
+}
+
+export interface GameLogoutPayload {
+  build: string;
+  projectId: string;
+  serverAddress: string;
+  secure: boolean;
+  frontendUrl: string;
+  logFilePath: string;
+  pid: number | null;
+  exitCode: number | null;
+  signal: string | null;
+}
+
 export interface ErrorEnvelope {
   error: {
     code: ErrorCode;
