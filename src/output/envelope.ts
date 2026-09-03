@@ -5,11 +5,21 @@ import type {
   GameStartPayload,
   LoginPayload,
   LogoutPayload,
+  QaCancelPayload,
+  QaDiffPayload,
+  QaRunPayload,
   StatusPayload,
 } from './contract.js';
 
 export type CommandPayload =
-  LoginPayload | StatusPayload | LogoutPayload | GameStartPayload | GameLogoutPayload;
+  | LoginPayload
+  | StatusPayload
+  | LogoutPayload
+  | GameStartPayload
+  | GameLogoutPayload
+  | QaRunPayload
+  | QaCancelPayload
+  | QaDiffPayload;
 
 /**
  * 출력 두 갈래를 한 곳으로 모은다. 테스트가 실제 stdout 을 건드리지 않고 무엇이 찍혔는지

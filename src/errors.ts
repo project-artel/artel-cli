@@ -27,6 +27,14 @@ export const ERROR_CODES = [
   'game_exited_before_registration',
   'game_registration_timeout',
   'game_logout_timeout',
+  'qa_sdk_disconnected',
+  'qa_run_active',
+  'qa_test_run_empty',
+  'qa_run_not_found',
+  'qa_run_not_active',
+  'qa_watch_disconnected',
+  'qa_watch_timeout',
+  'qa_invalid_arch',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
