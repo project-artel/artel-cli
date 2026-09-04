@@ -15,6 +15,10 @@ import type {
   ScenarioDeletePayload,
   ScenarioListPayload,
   ScenarioPayload,
+  TestRunDeletePayload,
+  TestRunListPayload,
+  TestRunPayload,
+  TestRunScenariosPayload,
   StatusPayload,
 } from './contract.js';
 import type { OutputSink } from './envelope.js';
@@ -373,4 +377,63 @@ export function printScenarioDelete(sink: OutputSink, payload: ScenarioDeletePay
       ? `Deleted test scenario ${payload.scenarioId}, along with its QA run history.`
       : `Deleted test scenario ${payload.scenarioId}.`,
   );
+}
+
+export function printTestRun(sink: OutputSink, payload: TestRunPayload): void {
+  sink.out(`Test run ${payload.runId} — ${payload.name}.`);
+  sink.out(`  project        ${payload.projectId}`);
+  sink.out(`  description    ${payload.description ?? '-'}`);
+  sink.out(`  created        ${payload.createdAt}`);
+}
+
+export function printTestRunList(sink: OutputSink, payload: TestRunListPayload): void {
+  if (payload.items.length === 0) {
+    sink.out('No test runs.');
+    return;
+  }
+  sink.out(`${String(payload.items.length)} test run(s).`);
+  for (const run of payload.items) {
+    sink.out(
+      `  ${run.runId}  ${run.name}${run.description === null ? '' : `  — ${run.description}`}`,
+    );
+  }
+}
+
+export function printTestRunScenarios(sink: OutputSink, payload: TestRunScenariosPayload): void {
+  if (payload.items.length === 0) {
+    sink.out(`Test run ${payload.runId} has no scenarios bound to it.`);
+    return;
+  }
+  sink.out(
+    `Test run ${payload.runId} — ${String(payload.items.length)} scenario(s), in run order.`,
+  );
+  for (const item of payload.items) {
+    sink.out(`  ${String(item.position)}  ${item.testScenarioId}`);
+  }
+}
+
+export function printTestRunDelete(sink: OutputSink, payload: TestRunDeletePayload): void {
+  const preview = payload.preview;
+  if (!payload.confirmed) {
+    sink.out(`Not deleted. Test run ${payload.runId} would take the following down with it:`);
+    sink.out(`  scenarios in this run           ${String(preview.scenarioCount)}`);
+    sink.out(
+      `  scenarios only in this run      ${String(preview.removableScenarioCount)}${payload.dropScenarios ? ' (would be deleted with --drop-scenarios)' : ' (kept unless you pass --drop-scenarios)'}`,
+    );
+    sink.out(`  of those, kept for QA history   ${String(preview.keptForQaHistoryCount)}`);
+    sink.out('Re-run with --yes to confirm the delete.');
+    return;
+  }
+
+  sink.out(`Deleted test run ${payload.runId}.`);
+  if (payload.dropScenarios) {
+    sink.out(`  scenarios deleted with it       ${String(payload.deletedScenarioCount ?? 0)}`);
+    sink.out(
+      `  kept for QA history             ${String(payload.deletedKeptForQaHistoryCount ?? 0)}`,
+    );
+  } else {
+    sink.out(
+      '  its scenarios were left in place (pass --drop-scenarios to remove the ones only it used)',
+    );
+  }
 }

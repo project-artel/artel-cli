@@ -340,3 +340,55 @@ export interface ScenarioDeletePayload {
   deleted: true;
   forced: boolean;
 }
+
+
+/**
+ * test run 하나. `qa run` 이 실행하는 시나리오 묶음(자료)이지, 실행 자체(`QaRunPayload`)가
+ * 아니다 — 이름이 가깝지만 이 둘은 서로 다른 것을 가리킨다.
+ */
+export interface TestRunPayload {
+  runId: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+}
+
+export interface TestRunListPayload {
+  items: TestRunPayload[];
+}
+
+/** [position] 이 실행 순서다. 벤치마크의 첫 시나리오는 저장 없이 새로 설치한 상태를 가정하므로 0번이어야 한다. */
+export interface TestRunScenarioItemPayload {
+  position: number;
+  testScenarioId: string;
+}
+
+/** `run scenarios` 의 조회와 교체(`--set`)가 같은 모양을 낸다. */
+export interface TestRunScenariosPayload {
+  runId: string;
+  items: TestRunScenarioItemPayload[];
+}
+
+/** 지우기 전에 무엇이 같이 없어지는지 미리 센 값. `run delete` 가 실제로 지우기 전에 항상 이것부터 보여준다. */
+export interface TestRunDeletionPreviewPayload {
+  scenarioCount: number;
+  removableScenarioCount: number;
+  keptForQaHistoryCount: number;
+}
+
+/**
+ * `run delete` 한 번의 전체 결과.
+ *
+ * [confirmed] 가 `false` 면 `--yes` 없이 불러 미리보기만 하고 실제로는 지우지 않은 것이다 —
+ * 그때 [deletedScenarioCount]·[deletedKeptForQaHistoryCount] 는 `null` 이다(시도하지 않았다는
+ * 뜻이지 0건이라는 뜻이 아니다). [preview] 는 두 경우 모두 항상 채워진다.
+ */
+export interface TestRunDeletePayload {
+  runId: string;
+  dropScenarios: boolean;
+  confirmed: boolean;
+  preview: TestRunDeletionPreviewPayload;
+  deletedScenarioCount: number | null;
+  deletedKeptForQaHistoryCount: number | null;
+}

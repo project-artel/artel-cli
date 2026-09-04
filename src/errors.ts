@@ -43,6 +43,9 @@ export const ERROR_CODES = [
   'scenario_has_qa_history',
   'scenario_invalid_steps',
   'scenario_invalid_labels',
+  'run_not_found',
+  'run_invalid_request',
+  'run_has_qa_history',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

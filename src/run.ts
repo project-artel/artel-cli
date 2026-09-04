@@ -30,6 +30,12 @@ import { runScenarioExpectedLabels } from './commands/scenario/expected-labels.j
 import { runScenarioList } from './commands/scenario/list.js';
 import { runScenarioShow } from './commands/scenario/show.js';
 import { runScenarioUpdate } from './commands/scenario/update.js';
+import { runCreate } from './commands/run/create.js';
+import { runDelete } from './commands/run/delete.js';
+import { runList } from './commands/run/list.js';
+import { runScenarios } from './commands/run/scenarios.js';
+import { runShow } from './commands/run/show.js';
+import { runUpdate } from './commands/run/update.js';
 
 export { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from './exit.js';
 
@@ -736,6 +742,218 @@ export async function runCli(
         );
       },
     );
+
+/** `run` 명령들이 공유하는 `--console-url` 설명. 이 그룹도 console 을 부르지 않는다. */
+const RUN_CONSOLE_URL_HELP =
+  'console base URL; test run commands never call the console, so this is accepted and unused';
+
+  const run = program
+    .command('run')
+    .description(
+      'Manage test runs — the scenario sets a QA run executes. Not "artel qa run", which starts an execution of one.',
+    );
+
+  run
+    .command('list')
+    .description('List the test runs in a project')
+    .requiredOption('--project <id>', 'project the test runs belong to')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', RUN_CONSOLE_URL_HELP)
+    .action(async (options: { project: string; json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runList(
+        { json: options.json, project: options.project, apiUrl: options.apiUrl },
+        sink,
+        env,
+      );
+    });
+
+  run
+    .command('create')
+    .description('Create a test run, empty of scenarios until "artel run scenarios --set" fills it')
+    .requiredOption('--project <id>', 'project the test run belongs to')
+    .requiredOption('--name <name>', 'name for the test run')
+    .option('--description <text>', 'description for the test run')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', RUN_CONSOLE_URL_HELP)
+    .action(
+      async (options: {
+        project: string;
+        name: string;
+        description?: string | undefined;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runCreate(
+          {
+            json: options.json,
+            project: options.project,
+            name: options.name,
+            description: options.description,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  run
+    .command('show')
+    .description('Print one test run')
+    .argument('<run-id>', 'test run to read')
+    .requiredOption('--project <id>', 'project the test run belongs to')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', RUN_CONSOLE_URL_HELP)
+    .action(
+      async (
+        runId: string,
+        options: { project: string; json: boolean; apiUrl?: string | undefined },
+      ) => {
+        json = options.json;
+        await runShow(
+          runId,
+          { json: options.json, project: options.project, apiUrl: options.apiUrl },
+          sink,
+          env,
+        );
+      },
+    );
+
+  run
+    .command('update')
+    .description("Change a test run's name or description")
+    .argument('<run-id>', 'test run to change')
+    .requiredOption('--project <id>', 'project the test run belongs to')
+    .option('--name <name>', 'new name for the test run')
+    .option('--description <text>', 'new description for the test run')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', RUN_CONSOLE_URL_HELP)
+    .action(
+      async (
+        runId: string,
+        options: {
+          project: string;
+          name?: string | undefined;
+          description?: string | undefined;
+          json: boolean;
+          apiUrl?: string | undefined;
+        },
+      ) => {
+        json = options.json;
+        await runUpdate(
+          runId,
+          {
+            json: options.json,
+            project: options.project,
+            name: options.name,
+            description: options.description,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  run
+    .command('delete')
+    .description(
+      'Delete a test run. Without --yes, only shows what would be taken down with it and deletes nothing',
+    )
+    .argument('<run-id>', 'test run to delete')
+    .requiredOption('--project <id>', 'project the test run belongs to')
+    .option(
+      '--drop-scenarios',
+      'also delete the scenarios that appear in no other test run (scenarios with QA history are always kept)',
+      false,
+    )
+    .option('--yes', 'actually delete, instead of only showing the deletion preview', false)
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', RUN_CONSOLE_URL_HELP)
+    .action(
+      async (
+        runId: string,
+        options: {
+          project: string;
+          dropScenarios: boolean;
+          yes: boolean;
+          json: boolean;
+          apiUrl?: string | undefined;
+        },
+      ) => {
+        json = options.json;
+        await runDelete(
+          runId,
+          {
+            json: options.json,
+            project: options.project,
+            dropScenarios: options.dropScenarios,
+            yes: options.yes,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  run
+    .command('scenarios')
+    .description(
+      'Show the scenarios bound to a test run, in run order; with --set, replace the whole binding',
+    )
+    .argument('<run-id>', 'test run whose scenario binding to read or replace')
+    .requiredOption('--project <id>', 'project the test run belongs to')
+    .option(
+      '--set <ids>',
+      'replace the whole binding with these scenario ids, comma-separated and in run order (the first must be the save-less fresh-install scenario)',
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', RUN_CONSOLE_URL_HELP)
+    .action(
+      async (
+        runId: string,
+        options: {
+          project: string;
+          set?: string | undefined;
+          json: boolean;
+          apiUrl?: string | undefined;
+        },
+      ) => {
+        json = options.json;
+        await runScenarios(
+          runId,
+          {
+            json: options.json,
+            project: options.project,
+            set: parseScenarioIds(options.set),
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+/** `--set` 의 원문을 콤마로 가른다. 빈 문자열 항목은 실수(연달아 찍은 콤마 등)로 보고 버린다. */
+function parseScenarioIds(raw: string | undefined): readonly string[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  return raw
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+}
+
 
   try {
     await program.parseAsync(argv, { from: 'user' });
