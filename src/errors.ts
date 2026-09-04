@@ -35,6 +35,9 @@ export const ERROR_CODES = [
   'qa_watch_disconnected',
   'qa_watch_timeout',
   'qa_invalid_arch',
+  'case_not_found',
+  'case_invalid_request',
+  'case_invalid_body',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

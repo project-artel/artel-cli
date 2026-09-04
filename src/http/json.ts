@@ -11,7 +11,7 @@ import { parseHttpFailure, toCliError, type HttpFailure } from './errors.js';
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 export interface JsonRequest {
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   endpoint: string;
   cliToken: string;
   /** 있으면 `application/json` 으로 직렬화해 보낸다. */

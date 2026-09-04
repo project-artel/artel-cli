@@ -5,6 +5,11 @@ import { Command, CommanderError } from 'commander';
 import { runAuthLogin } from './commands/auth/login.js';
 import { runAuthLogout } from './commands/auth/logout.js';
 import { runAuthStatus } from './commands/auth/status.js';
+import { runCaseCreate } from './commands/case/create.js';
+import { runCaseDelete } from './commands/case/delete.js';
+import { runCaseList } from './commands/case/list.js';
+import { runCaseShow } from './commands/case/show.js';
+import { runCaseUpdate } from './commands/case/update.js';
 import { runGameLogout } from './commands/game/logout.js';
 import { runGameStart } from './commands/game/start.js';
 import { runQaCancel } from './commands/qa/cancel.js';
@@ -399,6 +404,138 @@ export async function runCli(
             to: options.to,
             apiUrl: options.apiUrl,
           },
+          sink,
+          env,
+        );
+      },
+    );
+
+  const caseGroup = program
+    .command('case')
+    .description("Create, read, update, and delete a project's reusable test cases");
+
+  caseGroup
+    .command('list')
+    .description("List a project's test cases")
+    .requiredOption('--project <id>', 'project whose test cases to list')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(async (options: { project: string; json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runCaseList(
+        { json: options.json, project: options.project, apiUrl: options.apiUrl },
+        sink,
+        env,
+      );
+    });
+
+  caseGroup
+    .command('show')
+    .description('Print one test case')
+    .argument('<case-id>', 'test case to read')
+    .requiredOption('--project <id>', 'project the test case belongs to')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (
+        caseId: string,
+        options: { project: string; json: boolean; apiUrl?: string | undefined },
+      ) => {
+        json = options.json;
+        await runCaseShow(
+          caseId,
+          { json: options.json, project: options.project, apiUrl: options.apiUrl },
+          sink,
+          env,
+        );
+      },
+    );
+
+  caseGroup
+    .command('create')
+    .description(
+      'Create one test case, or many at once, from a JSON body read from --file or standard input',
+    )
+    .requiredOption('--project <id>', 'project to create the test case(s) in')
+    .option(
+      '--file <path>',
+      'path to a JSON test case object, or a JSON array of them; omit to read standard input',
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (options: {
+        project: string;
+        file?: string | undefined;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        exitCode = await runCaseCreate(
+          {
+            json: options.json,
+            project: options.project,
+            file: options.file,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  caseGroup
+    .command('update')
+    .description('Update one test case from a JSON body read from --file or standard input')
+    .argument('<case-id>', 'test case to update')
+    .requiredOption('--project <id>', 'project the test case belongs to')
+    .option(
+      '--file <path>',
+      'path to a JSON object holding the fields to change; omit to read standard input',
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (
+        caseId: string,
+        options: {
+          project: string;
+          file?: string | undefined;
+          json: boolean;
+          apiUrl?: string | undefined;
+        },
+      ) => {
+        json = options.json;
+        await runCaseUpdate(
+          caseId,
+          {
+            json: options.json,
+            project: options.project,
+            file: options.file,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  caseGroup
+    .command('delete')
+    .description('Delete one test case')
+    .argument('<case-id>', 'test case to delete')
+    .requiredOption('--project <id>', 'project the test case belongs to')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (
+        caseId: string,
+        options: { project: string; json: boolean; apiUrl?: string | undefined },
+      ) => {
+        json = options.json;
+        await runCaseDelete(
+          caseId,
+          { json: options.json, project: options.project, apiUrl: options.apiUrl },
           sink,
           env,
         );

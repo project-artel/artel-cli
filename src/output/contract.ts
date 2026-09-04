@@ -221,3 +221,65 @@ export interface QaDiffPayload {
   /** `target - base`. 어느 한쪽이 `null` 인 칸은 `null` 이다. */
   difference: QaMetricsPayload;
 }
+
+/**
+ * `TestCaseResponse`(orchestration `testcase/dto/TestCaseDtos.kt`)와 같은 필드, 같은 이름.
+ * `case list`·`case create`(단건)·`case update` 가 이 모양 그대로 낸다 — 서버가 낸 값을
+ * CLI 가 다시 이름 짓지 않는다.
+ */
+export interface TestCasePayload {
+  id: string;
+  projectId: string;
+  scene: string;
+  step: string;
+  precondition: string | null;
+  expectedValue: string;
+  status: string | null;
+  verificationStatus: string;
+  lastVerifiedBuildId: string | null;
+  createdAt: string;
+}
+
+/** `TestCaseDetailResponse`. [TestCasePayload] 에 `evidenceGaps` 하나만 더 붙는다. `case show` 전용. */
+export interface TestCaseDetailPayload extends TestCasePayload {
+  evidenceGaps: string[];
+}
+
+/** `case list --json`. `TestCaseListResponse` 와 같은 모양이다. */
+export interface CaseListPayload {
+  items: TestCasePayload[];
+}
+
+/**
+ * `case create --json` 가 JSON body 로 배열을 받았을 때, 항목 하나의 결과.
+ *
+ * `created`/`error` 는 정확히 하나만 채워진다 — 성공하면 만들어진 케이스, 실패하면 그
+ * 항목만의 오류다. 한 항목의 실패가 나머지 항목을 막지 않는다([CaseCreateBatchPayload] 참조).
+ */
+export interface CaseCreateResultPayload {
+  /** 입력 배열에서의 0-based 위치. */
+  index: number;
+  created: TestCasePayload | null;
+  error: { code: ErrorCode; message: string } | null;
+}
+
+/**
+ * `case create --json` 가 배열을 받아 여럿을 만들려 했을 때. 서버에 일괄 생성 endpoint 가
+ * 없으므로 CLI 가 항목마다 따로 요청하고, **끝까지 계속한다** — 항목 하나가 400 으로
+ * 막혀도 나머지가 만들어질 기회를 잃지 않는다. `created`/`failed` 로 결과를 한눈에 보고,
+ * 실패한 항목은 [CaseCreateResultPayload.error] 에서 이유를 본다.
+ */
+export interface CaseCreateBatchPayload {
+  projectId: string;
+  requested: number;
+  created: number;
+  failed: number;
+  results: CaseCreateResultPayload[];
+}
+
+/** `case delete --json`. 서버는 204 로 몸통 없이 답하므로, 지운 사실은 CLI 가 이 모양으로 만든다. */
+export interface CaseDeletePayload {
+  id: string;
+  projectId: string;
+  deleted: true;
+}
