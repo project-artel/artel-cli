@@ -78,6 +78,13 @@ can name exactly where to look. `--width`/`--height` set the window size
 (`-screen-width`/`-screen-height`); the launch never carries `-batchmode` (see
 below).
 
+**The game launches windowed.** Unity reads the full-screen mode it saved last
+time unless the launch says otherwise, so without `-screen-fullscreen` a build
+comes up full screen and `--width`/`--height` look ignored. This CLI passes
+`-screen-fullscreen 0` by default, and `--fullscreen` passes `1`. The default is
+windowed because running several builds at once is what this tool is for, and
+two full-screen games cover each other.
+
 The command waits until the build registers with the server, then prints the
 resulting game instance id and exits — the build itself keeps running. That id
 is what the QA commands (not yet built) take to address this run. If
@@ -100,6 +107,17 @@ pin the axes that make two runs comparable: `--model`, `--prompt-version`,
 holds one). They are the same four axes `artel qa diff` selects on, so a run you
 just watched can be compared straight away. Leave one out and the server picks;
 what it picked comes back in the result either way.
+
+Three more flags open what the agent is allowed to use, rather than how it
+thinks. `--content-map-mode` takes `on`, `frozen` or `off`; `--knowledge-mode`
+takes `learning`, `frozen` or `off`. They are separate switches on purpose — tied
+together, there is no way to tell whether the knowledge store or the content map
+was what helped. `--label` names the experiment a run belongs to. **Name the
+experiment only.** Which arm it is is already in `run_config`, so writing
+`arm:map-only` in the label records the same fact in two places and the two
+drift. A flag you leave out is left out of the request entirely, so the server
+uses its own default; the CLI never sends an empty string, which the server would
+read as a value and reject.
 
 **The exit code is the verdict.** `0` only when the run passed. Failed, cancelled
 and *unknown* are all `1`. Unknown is the case worth stating: a run whose socket
@@ -145,6 +163,61 @@ than ratios: sums can be added, ratios cannot. The CLI keeps that discipline —
 every rate the human table prints is derived from those sums with its
 denominator shown next to it. A cell whose axes are unknown (a run from before
 the server recorded them) never matches a selector that names an axis.
+
+## Running a matrix of configurations
+
+**`artel qa matrix`** expands the cartesian product of the axis lists and runs
+every combination, spread over several game builds:
+
+```
+artel qa matrix \
+  --project 1 \
+  --test-run 1,2 \
+  --content-map-mode off,frozen \
+  --knowledge-mode off \
+  --label 2x2-local-pilot \
+  --slot /path/to/BuildA/WordVenture.exe \
+  --slot /path/to/BuildB/WordVenture.exe
+```
+
+That is 2 test runs × 2 content map modes × 1 knowledge mode = 4 runs, spread
+over 2 slots. The product is expanded in the order the flags name the axes, and
+combination *i* goes to slot *i mod slots*, so running the same command twice
+sends the same combination to the same slot. A work-stealing queue would finish
+sooner but would decide that by timing, and which build a run happened on is part
+of the measurement.
+
+**A slot runs one QA run at a time.** Two runs on one game instance do not
+overlap — the second ends the first, and the server only allows that with
+`force` — so a slot is a work queue, not a parallelism knob.
+
+**The game is relaunched between runs.** If the previous run left the game in a
+battle screen, the next run's first step ("observe the title screen") starts
+from there and the comparison is no longer between the arms. Each combination
+gets a game this command launched and kills when the run ends.
+
+**Each slot needs its own build.** `sdk_uuid` (`ArtelSdkIdentity`) and the game's
+`StagePosition` (`SaveLoadController`) both live in `PlayerPrefs`, and on Windows
+that store is keyed by `productName`. Two builds that share a `productName` fold
+into a single game instance and overwrite each other's saves. This CLI does not
+build anything: prepare builds with different `productName` values and pass their
+paths. It can only reject the same path twice — two different paths with the same
+`productName` are yours to avoid.
+
+Registration is serialized across slots even though the runs are not. The CLI
+finds the instance a launch registered by diffing the project's instance list
+before and against after, and two launches registering at the same moment land in
+the same diff. Registration takes seconds and a run takes minutes, so the wait
+costs almost nothing.
+
+**One failed combination does not stop the others.** The failure is recorded
+against that combination, the slot moves on to its next one, and the summary
+lists what failed and why. The exit code is `0` only when every combination
+passed — the same rule as `artel qa run`. `--json` puts the whole matrix on
+stdout as one line, with `testRunId`, `contentMapMode`, `knowledgeMode`,
+`qaRunId`, `status`, the step counts and the elapsed time for each combination;
+progress goes to stderr. The CLI never invents an arm name for a combination:
+the axis values say what it was.
 
 ## Two things worth knowing before automating a run
 

@@ -20,6 +20,8 @@ export interface GameStartOptions {
   projectId: string;
   width: number;
   height: number;
+  /** 기본은 창 모드다. 이유는 `game/launch-args.ts` 의 `fullscreen` 에 적혀 있다. */
+  fullscreen: boolean;
   registrationTimeoutMs: number;
   /** 자식에 물려줄 바탕 환경 — 실제 실행에서는 `process.env` 다. `ARTEL_SDK_TOKEN` 은 이 flow 가 여기 더한다. */
   processEnv: NodeJS.ProcessEnv;
@@ -83,6 +85,7 @@ export async function runGameStartFlow(
     logFilePath,
     width: options.width,
     height: options.height,
+    fullscreen: options.fullscreen,
     logout: false,
   });
 

@@ -77,6 +77,9 @@ export async function runGameLogoutFlow(
     logFilePath,
     width: options.width,
     height: options.height,
+    // 세션만 지우고 곧장 끝나는 실행이라 전체 화면으로 띄울 이유가 없다. `game start` 와
+    // 달리 이 명령에는 `--fullscreen` 이 없다.
+    fullscreen: false,
     logout: true,
   });
 

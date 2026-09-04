@@ -16,6 +16,7 @@ import { runGameLogout } from './commands/game/logout.js';
 import { runGameStart } from './commands/game/start.js';
 import { runQaCancel } from './commands/qa/cancel.js';
 import { runQaDiff } from './commands/qa/diff.js';
+import { runQaMatrix } from './commands/qa/matrix.js';
 import { runQaRun } from './commands/qa/run.js';
 import { runQaShow } from './commands/qa/show.js';
 import { runQaWatch } from './commands/qa/watch.js';
@@ -25,6 +26,14 @@ import { DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH } from './game/launch-args.
 import { DEFAULT_LOGOUT_TIMEOUT_MS } from './game/logout-flow.js';
 import { DEFAULT_REGISTRATION_TIMEOUT_MS } from './game/start-flow.js';
 import { processSink, writeErrorEnvelope, type OutputSink } from './output/envelope.js';
+import {
+  CONTENT_MAP_MODES,
+  KNOWLEDGE_MODES,
+  parseAxisList,
+  parseAxisValues,
+  parseLabel,
+  requireAxisValue,
+} from './qa/axes.js';
 import { runScenarioApprove } from './commands/scenario/approve.js';
 import { runScenarioCreate } from './commands/scenario/create.js';
 import { runScenarioDelete } from './commands/scenario/delete.js';
@@ -98,6 +107,34 @@ export function parsePositiveInt(value: string, flagLabel: string): number {
     throw new UsageError(`${flagLabel} must be at least 1.`);
   }
   return parsed;
+}
+
+/** `--slot` 은 되풀이해 적는다. commander 는 값을 모으는 방법을 스스로 정하지 않는다. */
+function collectSlot(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+/**
+ * 슬롯 경로가 서로 다른지 본다.
+ *
+ * 같은 경로를 두 번 적으면 `productName` 도 반드시 같으므로 두 인스턴스가 하나로 접히고
+ * 세이브가 서로를 덮어쓴다. 경로가 다르면서 `productName` 이 같은 경우는 CLI 가 알 수 없다 —
+ * 그것은 빌드를 만든 사람이 지켜야 하고, `--help` 가 그렇게 말한다.
+ */
+export function requireDistinctSlots(slots: readonly string[]): readonly string[] {
+  if (slots.length === 0) {
+    throw new UsageError('--slot needs at least one game executable to drive.');
+  }
+  const seen = new Set<string>();
+  for (const slot of slots) {
+    if (seen.has(slot)) {
+      throw new UsageError(
+        `--slot lists "${slot}" twice. Each slot needs its own build: two builds with the same productName share one PlayerPrefs store, so they fold into a single game instance and overwrite each other's saves.`,
+      );
+    }
+    seen.add(slot);
+  }
+  return slots;
 }
 
 export async function runCli(
@@ -189,6 +226,11 @@ export async function runCli(
     .option('--width <n>', 'window width in pixels', String(DEFAULT_SCREEN_WIDTH))
     .option('--height <n>', 'window height in pixels', String(DEFAULT_SCREEN_HEIGHT))
     .option(
+      '--fullscreen',
+      'launch full screen instead of windowed; two full-screen games cover each other, so running several builds side by side needs the windowed default',
+      false,
+    )
+    .option(
       '--timeout <seconds>',
       'seconds to wait for the game to register',
       String(DEFAULT_REGISTRATION_TIMEOUT_MS / 1_000),
@@ -202,6 +244,7 @@ export async function runCli(
         build: string;
         width: string;
         height: string;
+        fullscreen: boolean;
         timeout: string;
         json: boolean;
         apiUrl?: string | undefined;
@@ -215,6 +258,7 @@ export async function runCli(
             build: options.build,
             width: parsePositiveInt(options.width, '--width'),
             height: parsePositiveInt(options.height, '--height'),
+            fullscreen: options.fullscreen,
             timeoutSeconds: parsePositiveInt(options.timeout, '--timeout'),
             apiUrl: options.apiUrl,
             consoleUrl: options.consoleUrl,
@@ -287,6 +331,18 @@ export async function runCli(
       '--arch <json>',
       "pin the agent's structure: a JSON object, or @path naming a file that holds one",
     )
+    .option(
+      '--content-map-mode <mode>',
+      `how much of the content map this run may read and write: ${CONTENT_MAP_MODES.join(' | ')}; omit to let the server choose`,
+    )
+    .option(
+      '--knowledge-mode <mode>',
+      `how much of the knowledge store this run may read and write: ${KNOWLEDGE_MODES.join(' | ')}; omit to let the server choose`,
+    )
+    .option(
+      '--label <name>',
+      'name of the experiment this run belongs to. Name the experiment only — the arm is already in run_config, so writing "arm:map-only" here records the same fact twice and the two drift',
+    )
     .option('--force', 'end the QA run already on that game instance and take it over', false)
     .option('--no-wait', 'start the run and exit instead of watching it to the end')
     .option(
@@ -306,6 +362,9 @@ export async function runCli(
         reasoningEffort?: string | undefined;
         reasoningMaxTokens?: string | undefined;
         arch?: string | undefined;
+        contentMapMode?: string | undefined;
+        knowledgeMode?: string | undefined;
+        label?: string | undefined;
         force: boolean;
         wait: boolean;
         timeout: string;
@@ -326,10 +385,108 @@ export async function runCli(
                 ? undefined
                 : parsePositiveInt(options.reasoningMaxTokens, '--reasoning-max-tokens'),
             arch: options.arch,
+            contentMapMode:
+              options.contentMapMode === undefined
+                ? undefined
+                : requireAxisValue(options.contentMapMode, '--content-map-mode', CONTENT_MAP_MODES),
+            knowledgeMode:
+              options.knowledgeMode === undefined
+                ? undefined
+                : requireAxisValue(options.knowledgeMode, '--knowledge-mode', KNOWLEDGE_MODES),
+            label: options.label === undefined ? undefined : parseLabel(options.label),
             force: options.force,
             wait: options.wait,
             timeoutSeconds: parseTimeoutSeconds(options.timeout),
             apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  qa.command('matrix')
+    .description(
+      'Expand the cartesian product of the axis lists and run every combination, spread over several game builds',
+    )
+    .requiredOption('--project <id>', 'project the game instances register under')
+    .requiredOption(
+      '--test-run <ids>',
+      'comma-separated test runs; one axis of the product (for example 1,2)',
+    )
+    .option(
+      '--slot <path>',
+      "path to a game executable this matrix may drive; repeat for each slot. One run at a time per slot, and the game is relaunched between runs so the next one starts from the title screen. Each slot needs its OWN build: sdk_uuid and the game's StagePosition both live in PlayerPrefs, which Windows keys by productName, so two builds sharing a productName fold into one game instance and overwrite each other's saves. This CLI builds nothing — prepare the builds and pass their paths",
+      collectSlot,
+      [],
+    )
+    .option(
+      '--content-map-mode <modes>',
+      `comma-separated content map modes, one axis of the product: ${CONTENT_MAP_MODES.join(' | ')}; omit to let the server choose`,
+    )
+    .option(
+      '--knowledge-mode <modes>',
+      `comma-separated knowledge modes, one axis of the product: ${KNOWLEDGE_MODES.join(' | ')}; omit to let the server choose`,
+    )
+    .option(
+      '--label <name>',
+      'name of the experiment every run in this matrix belongs to. Name the experiment only — the arm is already in run_config, so writing "arm:map-only" here records the same fact twice and the two drift',
+    )
+    .option('--width <n>', 'window width in pixels', String(DEFAULT_SCREEN_WIDTH))
+    .option('--height <n>', 'window height in pixels', String(DEFAULT_SCREEN_HEIGHT))
+    .option(
+      '--launch-timeout <seconds>',
+      'seconds to wait for each launched game to register',
+      String(DEFAULT_REGISTRATION_TIMEOUT_MS / 1_000),
+    )
+    .option(
+      '--timeout <seconds>',
+      'seconds to keep watching each run; 0 waits with no limit',
+      String(DEFAULT_QA_TIMEOUT_SECONDS),
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', 'console base URL; overrides ARTEL_CONSOLE_BASE_URL')
+    .action(
+      async (options: {
+        project: string;
+        testRun: string;
+        slot: string[];
+        contentMapMode?: string | undefined;
+        knowledgeMode?: string | undefined;
+        label?: string | undefined;
+        width: string;
+        height: string;
+        launchTimeout: string;
+        timeout: string;
+        json: boolean;
+        apiUrl?: string | undefined;
+        consoleUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        exitCode = await runQaMatrix(
+          {
+            json: options.json,
+            project: options.project,
+            testRunIds: parseAxisList(options.testRun, '--test-run'),
+            // 축 flag 를 안 주면 그 축은 값 하나짜리이고 그 값은 "안 준 것"(null)이다.
+            // 조합은 그대로 하나 생기고, body 에는 그 키가 실리지 않아 서버 기본값으로 돈다.
+            contentMapModes:
+              options.contentMapMode === undefined
+                ? [null]
+                : parseAxisValues(options.contentMapMode, '--content-map-mode', CONTENT_MAP_MODES),
+            knowledgeModes:
+              options.knowledgeMode === undefined
+                ? [null]
+                : parseAxisValues(options.knowledgeMode, '--knowledge-mode', KNOWLEDGE_MODES),
+            label: options.label === undefined ? undefined : parseLabel(options.label),
+            slots: requireDistinctSlots(options.slot),
+            width: parsePositiveInt(options.width, '--width'),
+            height: parsePositiveInt(options.height, '--height'),
+            launchTimeoutSeconds: parsePositiveInt(options.launchTimeout, '--launch-timeout'),
+            timeoutSeconds: parseTimeoutSeconds(options.timeout),
+            apiUrl: options.apiUrl,
+            consoleUrl: options.consoleUrl,
           },
           sink,
           env,
@@ -751,9 +908,9 @@ export async function runCli(
       },
     );
 
-/** `run` 명령들이 공유하는 `--console-url` 설명. 이 그룹도 console 을 부르지 않는다. */
-const RUN_CONSOLE_URL_HELP =
-  'console base URL; test run commands never call the console, so this is accepted and unused';
+  /** `run` 명령들이 공유하는 `--console-url` 설명. 이 그룹도 console 을 부르지 않는다. */
+  const RUN_CONSOLE_URL_HELP =
+    'console base URL; test run commands never call the console, so this is accepted and unused';
 
   const run = program
     .command('run')
@@ -1052,16 +1209,16 @@ const RUN_CONSOLE_URL_HELP =
       },
     );
 
-/** `--set` 의 원문을 콤마로 가른다. 빈 문자열 항목은 실수(연달아 찍은 콤마 등)로 보고 버린다. */
-function parseScenarioIds(raw: string | undefined): readonly string[] | undefined {
-  if (raw === undefined) {
-    return undefined;
+  /** `--set` 의 원문을 콤마로 가른다. 빈 문자열 항목은 실수(연달아 찍은 콤마 등)로 보고 버린다. */
+  function parseScenarioIds(raw: string | undefined): readonly string[] | undefined {
+    if (raw === undefined) {
+      return undefined;
+    }
+    return raw
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0);
   }
-  return raw
-    .split(',')
-    .map((id) => id.trim())
-    .filter((id) => id.length > 0);
-}
 
   try {
     await program.parseAsync(argv, { from: 'user' });

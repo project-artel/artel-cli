@@ -34,6 +34,7 @@ describe('buildGameLaunchArgs', () => {
     logFilePath: '/home/user/.artel/logs/game-1.log',
     width: 1280,
     height: 720,
+    fullscreen: false,
   };
 
   it('never includes -batchmode', () => {
@@ -56,6 +57,8 @@ describe('buildGameLaunchArgs', () => {
       '1280',
       '-screen-height',
       '720',
+      '-screen-fullscreen',
+      '0',
       '-artel-project',
       '42',
     ]);
@@ -72,6 +75,21 @@ describe('buildGameLaunchArgs', () => {
     const args = buildGameLaunchArgs({ ...base, projectId: null, logout: true });
     expect(args).not.toContain('-artel-project');
     expect(args).toContain('-artel-logout');
+  });
+
+  it('asks for a window by default, so several games can sit side by side', () => {
+    // Unity 는 `-screen-fullscreen` 이 없으면 저장된 모드로 뜬다. 그래서 이 인자가 빠지면
+    // `-screen-width`/`-screen-height` 를 줘도 전체 화면으로 떠서 크기가 무시된 것처럼 보인다.
+    const args = buildGameLaunchArgs({ ...base, logout: false });
+    const index = args.indexOf('-screen-fullscreen');
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(args[index + 1]).toBe('0');
+  });
+
+  it('asks for full screen only when --fullscreen said so', () => {
+    const args = buildGameLaunchArgs({ ...base, fullscreen: true, logout: false });
+    const index = args.indexOf('-screen-fullscreen');
+    expect(args[index + 1]).toBe('1');
   });
 
   it('renders -artel-secure as the string "true" for an https server', () => {

@@ -12,6 +12,7 @@ import type {
   LogoutPayload,
   QaCancelPayload,
   QaDiffPayload,
+  QaMatrixPayload,
   QaRunPayload,
   ScenarioApprovePayload,
   ScenarioDeletePayload,
@@ -35,6 +36,7 @@ export type CommandPayload =
   | QaRunPayload
   | QaCancelPayload
   | QaDiffPayload
+  | QaMatrixPayload
   | TestCasePayload
   | TestCaseDetailPayload
   | CaseListPayload

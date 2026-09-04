@@ -137,6 +137,22 @@ export interface CreateQaRunRequest {
   promptVersion?: string | undefined;
   reasoning?: { effort?: string | undefined; maxTokens?: number | undefined } | undefined;
   arch?: unknown;
+  /**
+   * 이 런에 content map 을 얼마나 열어 줄지: `on`/`frozen`/`off`.
+   *
+   * 키가 **없는 것**과 값이 빈 문자열인 것은 다르다. 없으면 서버가 `run_config` 에 키를 싣지
+   * 않고 기본값(`on`)으로 읽지만, 빈 문자열은 값으로 읽혀 400 이 된다. 그래서 이 세 필드는
+   * 다른 선택 필드들과 같이 `undefined` 일 때 spread 에서 통째로 빠진다.
+   */
+  contentMapMode?: string | undefined;
+  /** 이 런에 지식창고를 얼마나 열어 줄지: `learning`/`frozen`/`off`. [contentMapMode] 와 같은 규칙. */
+  knowledgeMode?: string | undefined;
+  /**
+   * 이 런이 속한 실험 묶음의 이름. **arm 을 적는 자리가 아니다** — 무엇으로 돌았는지는
+   * `run_config` 가 이미 말하므로, 여기 `arm:map-only` 같은 것을 적으면 같은 사실이 두 군데
+   * 남고 언젠가 어긋난다.
+   */
+  label?: string | undefined;
   force?: boolean | undefined;
 }
 
