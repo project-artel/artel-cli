@@ -5,14 +5,10 @@ import type {
   TestCaseDetailPayload,
   TestCasePayload,
 } from '../../output/contract.js';
-import type { OutputSink } from '../../output/envelope.js';
+import { writeJsonPayload, type OutputSink } from '../../output/envelope.js';
 
 const LABEL_WIDTH = 20;
 const LIST_LINE_LIMIT = 72;
-
-function writeJson(sink: OutputSink, payload: unknown): void {
-  sink.out(JSON.stringify(payload));
-}
 
 function field(sink: OutputSink, label: string, value: string): void {
   sink.out(`  ${label.padEnd(LABEL_WIDTH)}${value}`);
@@ -33,7 +29,7 @@ export function reportCaseList(
   payload: CaseListPayload,
 ): void {
   if (json) {
-    writeJson(sink, payload);
+    writeJsonPayload(sink, payload);
     return;
   }
   sink.out(`${String(payload.items.length)} test case(s) in project ${projectId}.`);
@@ -51,7 +47,7 @@ export function reportTestCase(
   verb: string,
 ): void {
   if (json) {
-    writeJson(sink, payload);
+    writeJsonPayload(sink, payload);
     return;
   }
   sink.out(`${verb} test case ${payload.id} in project ${payload.projectId}.`);
@@ -64,7 +60,7 @@ export function reportTestCaseDetail(
   payload: TestCaseDetailPayload,
 ): void {
   if (json) {
-    writeJson(sink, payload);
+    writeJsonPayload(sink, payload);
     return;
   }
   sink.out(`Test case ${payload.id} in project ${payload.projectId}.`);
@@ -97,7 +93,7 @@ export function reportCaseCreateBatch(
   payload: CaseCreateBatchPayload,
 ): void {
   if (json) {
-    writeJson(sink, payload);
+    writeJsonPayload(sink, payload);
     return;
   }
   sink.out(
@@ -124,7 +120,7 @@ export function reportCaseDeleted(
   payload: CaseDeletePayload,
 ): void {
   if (json) {
-    writeJson(sink, payload);
+    writeJsonPayload(sink, payload);
     return;
   }
   sink.out(`Deleted test case ${payload.id} from project ${payload.projectId}.`);
