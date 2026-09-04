@@ -1,8 +1,10 @@
 import type { ErrorCode } from '../errors.js';
 import type {
   CaseCreateBatchPayload,
+  ContentMapScanPayload,
   CaseDeletePayload,
   CaseListPayload,
+  DocumentUploadPayload,
   ErrorEnvelope,
   GameLogoutPayload,
   GameStartPayload,
@@ -45,7 +47,9 @@ export type CommandPayload =
   | TestRunPayload
   | TestRunListPayload
   | TestRunScenariosPayload
-  | TestRunDeletePayload;
+  | TestRunDeletePayload
+  | DocumentUploadPayload
+  | ContentMapScanPayload;
 
 /**
  * 출력 두 갈래를 한 곳으로 모은다. 테스트가 실제 stdout 을 건드리지 않고 무엇이 찍혔는지
