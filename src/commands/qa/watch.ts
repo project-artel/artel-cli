@@ -1,5 +1,6 @@
 import { EXIT_FAILURE, EXIT_OK } from '../../exit.js';
 import type { FetchLike } from '../../http/client.js';
+import type { QaRunPayload } from '../../output/contract.js';
 import { describeFollowEvent } from '../../output/human.js';
 import type { OutputSink } from '../../output/envelope.js';
 import { resolveQaContext, type QaContext } from '../../qa/context.js';
@@ -47,6 +48,25 @@ export async function watchToEnd(
     sink.err(options.json ? JSON.stringify(event) : describeFollowEvent(event));
   };
 
+  const payload = await followToPayload(context, qaRunId, options, onEvent, fetchImpl);
+  reportQaRun(sink, options.json, payload);
+  return payload.verdict === 'PASSED' ? EXIT_OK : EXIT_FAILURE;
+}
+
+/**
+ * 런 하나를 끝까지 따라가 payload 를 만든다. 아무것도 찍지 않는다.
+ *
+ * `watchToEnd` 에서 출력만 뺀 것이다. `qa matrix` 는 조합 여럿을 돌리고 stdout 에는 그
+ * 전부를 담은 payload 한 줄만 내야 하므로, 조합마다 `reportQaRun` 을 부르는 `watchToEnd` 를
+ * 그대로 쓸 수 없다. 진행 사건을 어디로 보낼지는 [onEvent] 를 준 쪽이 정한다.
+ */
+export async function followToPayload(
+  context: QaContext,
+  qaRunId: string,
+  options: QaWatchCommandOptions,
+  onEvent: (event: QaFollowEvent) => void,
+  fetchImpl?: FetchLike,
+): Promise<QaRunPayload> {
   const finished = await followQaRun({
     apiBaseUrl: context.apiBaseUrl,
     cliToken: context.cliToken,
@@ -58,12 +78,5 @@ export async function watchToEnd(
     reconnectDelaysMs: options.reconnectDelaysMs,
   });
 
-  const payload = await buildQaRunPayload(
-    context.apiBaseUrl,
-    context.cliToken,
-    finished,
-    fetchImpl,
-  );
-  reportQaRun(sink, options.json, payload);
-  return payload.verdict === 'PASSED' ? EXIT_OK : EXIT_FAILURE;
+  return await buildQaRunPayload(context.apiBaseUrl, context.cliToken, finished, fetchImpl);
 }

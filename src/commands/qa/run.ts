@@ -20,6 +20,12 @@ export interface QaRunCommandOptions {
   reasoningMaxTokens?: number | undefined;
   /** `--arch` 의 원문. JSON object 이거나 `@경로`. */
   arch?: string | undefined;
+  /** `--content-map-mode`. 값은 `qa/axes.ts` 가 이미 검증한 것이다. */
+  contentMapMode?: string | undefined;
+  /** `--knowledge-mode`. */
+  knowledgeMode?: string | undefined;
+  /** `--label`. 실험 묶음의 이름이고, arm 이름이 아니다. */
+  label?: string | undefined;
   force: boolean;
   /** `--no-wait` 면 false. 시작만 하고 끝난다. */
   wait: boolean;
@@ -35,6 +41,10 @@ export interface QaRunCommandOptions {
  * `--model`·`--prompt-version`·`--reasoning-effort`·`--arch` 네 개가 두 런을 비교 가능하게
  * 만드는 축이고, `qa diff` 가 셀을 고르는 축과 같은 값이다. 적지 않으면 서버가 프로젝트
  * 기본값으로 고르며, 그 경우에도 무엇으로 돌았는지는 결과의 `tries[].model` 등에 남는다.
+ *
+ * `--content-map-mode` 와 `--knowledge-mode` 는 그 넷과 달리 Agent 에게 무엇을 **열어 줄지**를
+ * 정한다. 둘을 따로 여는 것이 요점이다 — 한 스위치로 묶으면 지식이 도왔는지 지도가 도왔는지를
+ * 가르는 2×2 가 성립하지 않는다.
  *
  * `--no-wait` 는 판정이 아직 없으므로 exit code 0 이다. 시작한 것과 통과한 것은 다른 질문이다.
  */
@@ -66,6 +76,11 @@ export async function runQaRun(
             },
           }),
       ...(arch === undefined ? {} : { arch }),
+      // 안 준 축은 키 자체를 싣지 않는다. 빈 문자열을 실으면 서버가 그것을 값으로 읽고
+      // 400 으로 거절한다 — 기본값으로 떨어지지 않는다.
+      ...(options.contentMapMode === undefined ? {} : { contentMapMode: options.contentMapMode }),
+      ...(options.knowledgeMode === undefined ? {} : { knowledgeMode: options.knowledgeMode }),
+      ...(options.label === undefined ? {} : { label: options.label }),
       force: options.force,
     },
     fetchImpl,

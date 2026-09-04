@@ -12,6 +12,8 @@ import type {
   QaCancelPayload,
   QaCountsPayload,
   QaDiffPayload,
+  QaMatrixCombinationPayload,
+  QaMatrixPayload,
   QaMetricsPayload,
   QaRunPayload,
   QaVerdictValue,
@@ -187,6 +189,60 @@ export function printQaRun(sink: OutputSink, payload: QaRunPayload): void {
   for (const issue of payload.issues) {
     sink.out(`    ${issue.severity}  ${issue.title}  (issue ${issue.issueId}, ${issue.status})`);
   }
+}
+
+/**
+ * `qa matrix` 요약. 조합마다 한 줄이고, 축 값을 그대로 적는다 — arm 이름은 짓지 않는다.
+ */
+export function printQaMatrix(sink: OutputSink, payload: QaMatrixPayload): void {
+  sink.out(
+    `QA matrix — ${String(payload.succeeded)}/${String(payload.total)} combinations passed.`,
+  );
+  sink.out(`  project        ${payload.projectId}`);
+  sink.out(`  label          ${payload.label ?? '-'}`);
+  payload.slots.forEach((build, slot) => {
+    sink.out(`  slot ${String(slot)}         ${build}`);
+  });
+
+  for (const combination of payload.combinations) {
+    sink.out(
+      `  [${String(combination.index + 1)}] slot ${String(combination.slot)}  ${describeAxes(combination)}`,
+    );
+    sink.out(
+      `      run ${combination.qaRunId ?? '-'}  ${combination.status}  ${describeVerdict(combination.verdict)}  steps ${describeStepCount(combination)}  ${describeDuration(combination.durationMs)}`,
+    );
+  }
+
+  const failures = payload.combinations.filter((combination) => combination.verdict !== 'PASSED');
+  if (failures.length === 0) {
+    return;
+  }
+  sink.out(`  ${String(failures.length)} combinations did not pass:`);
+  for (const combination of failures) {
+    sink.out(
+      `    [${String(combination.index + 1)}] ${describeAxes(combination)} — ${
+        combination.error === null
+          ? `verdict ${describeVerdict(combination.verdict)} (${combination.status})`
+          : `${combination.error.code}: ${combination.error.message}`
+      }`,
+    );
+  }
+}
+
+function describeAxes(combination: QaMatrixCombinationPayload): string {
+  return `testRun=${combination.testRunId} contentMap=${combination.contentMapMode ?? 'server default'} knowledge=${combination.knowledgeMode ?? 'server default'}`;
+}
+
+/** 세지 못한 것과 0 은 다르다. 판정 요약이 없는 조합은 `-` 다. */
+function describeStepCount(combination: QaMatrixCombinationPayload): string {
+  if (combination.stepsTotal === null || combination.stepsPassed === null) {
+    return '-';
+  }
+  return `${String(combination.stepsPassed)}/${String(combination.stepsTotal)}`;
+}
+
+function describeDuration(durationMs: number): string {
+  return `${(durationMs / 1_000).toFixed(1)}s`;
 }
 
 export function printQaCancel(sink: OutputSink, payload: QaCancelPayload): void {

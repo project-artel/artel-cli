@@ -159,6 +159,61 @@ export interface QaCancelPayload {
 }
 
 /**
+ * `qa matrix` 가 돌린 조합 하나.
+ *
+ * 축 값을 그대로 적는다. `map-only` 같은 arm 이름을 CLI 가 지어내면 그것이 두 번째 진실
+ * 원본이 되고, 서버의 `run_config` 와 언젠가 어긋난다. 조합이 무엇인지는 [testRunId] 와
+ * 모드 두 개가 말한다.
+ *
+ * `null` 은 축의 flag 를 주지 않아 서버 기본값으로 돌았다는 뜻이다. 무엇으로 돌았는지를
+ * 정확히 알아야 하면 [qaRunId] 로 `qa show` 를 걸어 `run_config` 를 읽으면 된다.
+ */
+export interface QaMatrixCombinationPayload {
+  /** 전개 순서. 0부터. 같은 명령은 같은 조합에 같은 번호를 준다. */
+  index: number;
+  /** 이 조합이 돈 슬롯. 0부터, `--slot` 을 적은 순서다. */
+  slot: number;
+  /** 그 슬롯의 빌드 경로. 슬롯마다 빌드가 다르다. */
+  build: string;
+  testRunId: string;
+  contentMapMode: string | null;
+  knowledgeMode: string | null;
+  gameInstanceId: string | null;
+  qaRunId: string | null;
+  /**
+   * 런 생명주기 상태. 런이 시작되지도 못한 조합은 `NOT_STARTED` 다 — 서버가 준 값이 아니라
+   * 이 CLI 가 "런이 없다" 를 적는 자리다.
+   */
+  status: string;
+  verdict: QaVerdictValue;
+  stepsPassed: number | null;
+  stepsTotal: number | null;
+  /** 게임을 띄우기 시작해 런이 끝날 때까지. 띄우는 시간이 들어 있다. */
+  durationMs: number;
+  /** 실패한 이유. 통과했거나 판정만 `FAILED` 인 조합은 `null` 이다. */
+  error: { code: ErrorCode; message: string } | null;
+}
+
+/**
+ * `qa matrix` 한 번의 결과 전부.
+ *
+ * [succeeded] 는 판정이 `PASSED` 인 조합의 수다. `qa run` 이 판정을 exit code 로 내는 것과
+ * 같은 규칙이라, 판정이 `FAILED` 이거나 미상인 조합도 실패로 센다.
+ */
+export interface QaMatrixPayload {
+  /** `--label`. 실험 묶음의 이름이고 arm 이름이 아니다. */
+  label: string | null;
+  projectId: string;
+  /** 슬롯의 빌드 경로. 첨자가 슬롯 번호다. */
+  slots: string[];
+  total: number;
+  succeeded: number;
+  failed: number;
+  /** 전개 순서대로. 슬롯이 병렬로 돌아도 이 배열의 순서는 실행 시간에 흔들리지 않는다. */
+  combinations: QaMatrixCombinationPayload[];
+}
+
+/**
  * `/api/qa-stats` 셀 한 줄의 숫자 부분. 전부 **합계**이고 비율은 하나도 없다.
  *
  * `QaStatsDtos.kt` 가 평균 대신 합계를 내보내는 이유를 그대로 지킨다: 비율만 남기면 그것이

@@ -16,6 +16,8 @@ export interface GameStartOptions {
   build: string;
   width: number;
   height: number;
+  /** `--fullscreen`. 기본은 창 모드다. */
+  fullscreen: boolean;
   timeoutSeconds: number;
   /** `--api-url`. 있으면 `ARTEL_API_BASE_URL` 보다 이긴다. */
   apiUrl?: string | undefined;
@@ -58,6 +60,7 @@ export async function runGameStart(
       projectId: options.project,
       width: options.width,
       height: options.height,
+      fullscreen: options.fullscreen,
       registrationTimeoutMs: options.timeoutSeconds * 1_000,
       processEnv: env,
     },

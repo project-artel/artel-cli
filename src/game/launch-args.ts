@@ -28,6 +28,18 @@ export interface GameLaunchArgsOptions {
   logFilePath: string;
   width: number;
   height: number;
+  /**
+   * 전체 화면으로 띄울지. 기본은 창 모드(`false`)다.
+   *
+   * Unity 는 `-screen-fullscreen` 을 안 받으면 이전 실행이 `PlayerPrefs` 에 남긴 모드로 뜬다.
+   * 그래서 이 인자가 없으면 `-screen-width`/`-screen-height` 를 줘도 전체 화면으로 떠서
+   * 크기가 무시된 것처럼 보인다 — 2026-09-04 WordVenture 빌드에서 그렇게 떴다.
+   *
+   * 기본을 창으로 두는 이유는 이 도구의 쓰임새다: `artel qa matrix` 는 게임 여러 개를 한
+   * 화면에 나란히 띄워 축 조합을 나눠 돌린다. 전체 화면 둘은 서로를 덮으므로 그 배치가
+   * 성립하지 않는다.
+   */
+  fullscreen: boolean;
   /** `artel game logout` 만 켠다. */
   logout: boolean;
 }
@@ -54,6 +66,8 @@ export function buildGameLaunchArgs(options: GameLaunchArgsOptions): string[] {
     String(options.width),
     '-screen-height',
     String(options.height),
+    '-screen-fullscreen',
+    options.fullscreen ? '1' : '0',
   ];
 
   if (options.projectId !== null) {
