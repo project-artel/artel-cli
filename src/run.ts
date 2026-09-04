@@ -23,6 +23,13 @@ import { DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH } from './game/launch-args.
 import { DEFAULT_LOGOUT_TIMEOUT_MS } from './game/logout-flow.js';
 import { DEFAULT_REGISTRATION_TIMEOUT_MS } from './game/start-flow.js';
 import { processSink, writeErrorEnvelope, type OutputSink } from './output/envelope.js';
+import { runScenarioApprove } from './commands/scenario/approve.js';
+import { runScenarioCreate } from './commands/scenario/create.js';
+import { runScenarioDelete } from './commands/scenario/delete.js';
+import { runScenarioExpectedLabels } from './commands/scenario/expected-labels.js';
+import { runScenarioList } from './commands/scenario/list.js';
+import { runScenarioShow } from './commands/scenario/show.js';
+import { runScenarioUpdate } from './commands/scenario/update.js';
 
 export { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from './exit.js';
 
@@ -536,6 +543,194 @@ export async function runCli(
         await runCaseDelete(
           caseId,
           { json: options.json, project: options.project, apiUrl: options.apiUrl },
+          sink,
+          env,
+        );
+      },
+    );
+
+  const scenario = program
+    .command('scenario')
+    .description('Author, review, and approve the scenarios a QA run executes');
+
+  scenario
+    .command('list')
+    .description("List a project's test scenarios")
+    .requiredOption('--project <id>', 'project whose scenarios to list')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(async (options: { project: string; json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runScenarioList(
+        { json: options.json, project: options.project, apiUrl: options.apiUrl },
+        sink,
+        env,
+      );
+    });
+
+  scenario
+    .command('create')
+    .description(
+      'Create a test scenario; its steps come from --steps <path> or from standard input, never from a command-line argument',
+    )
+    .requiredOption('--project <id>', 'project the scenario belongs to')
+    .option('--title <text>', 'scenario title')
+    .option('--description <text>', 'scenario description')
+    .option(
+      '--steps <path>',
+      'path to a JSON file holding the steps array, or "-" (or omit) to read it from standard input',
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(
+      async (options: {
+        project: string;
+        title?: string | undefined;
+        description?: string | undefined;
+        steps?: string | undefined;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runScenarioCreate(
+          {
+            json: options.json,
+            project: options.project,
+            title: options.title,
+            description: options.description,
+            steps: options.steps,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  scenario
+    .command('show')
+    .description("Print a test scenario's title, description, and steps")
+    .argument('<scenario-id>', 'test scenario to read')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(async (scenarioId: string, options: { json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runScenarioShow(scenarioId, { json: options.json, apiUrl: options.apiUrl }, sink, env);
+    });
+
+  scenario
+    .command('update')
+    .description(
+      "Change a test scenario's title, description, or steps; an updated steps array comes from --steps <path> or standard input, never from a command-line argument",
+    )
+    .argument('<scenario-id>', 'test scenario to change')
+    .option('--title <text>', 'new title')
+    .option('--description <text>', 'new description')
+    .option(
+      '--steps <path>',
+      'path to a JSON file holding the new steps array, or "-" to read it from standard input; omit to leave steps unchanged',
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(
+      async (
+        scenarioId: string,
+        options: {
+          title?: string | undefined;
+          description?: string | undefined;
+          steps?: string | undefined;
+          json: boolean;
+          apiUrl?: string | undefined;
+        },
+      ) => {
+        json = options.json;
+        await runScenarioUpdate(
+          scenarioId,
+          {
+            json: options.json,
+            title: options.title,
+            description: options.description,
+            steps: options.steps,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  scenario
+    .command('delete')
+    .description('Delete a test scenario')
+    .argument('<scenario-id>', 'test scenario to delete')
+    .option(
+      '--force',
+      'also delete its QA run history; without this, a scenario with QA history is kept',
+      false,
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(
+      async (
+        scenarioId: string,
+        options: { force: boolean; json: boolean; apiUrl?: string | undefined },
+      ) => {
+        json = options.json;
+        await runScenarioDelete(
+          scenarioId,
+          { json: options.json, force: options.force, apiUrl: options.apiUrl },
+          sink,
+          env,
+        );
+      },
+    );
+
+  scenario
+    .command('approve')
+    .description(
+      'Approve a test scenario. This finalizes its last saved draft; it is not a permission check — the server tracks no approval state, and an unapproved scenario can already run in a QA run',
+    )
+    .argument('<scenario-id>', 'test scenario to approve')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(async (scenarioId: string, options: { json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runScenarioApprove(
+        scenarioId,
+        { json: options.json, apiUrl: options.apiUrl },
+        sink,
+        env,
+      );
+    });
+
+  scenario
+    .command('expected-labels')
+    .description(
+      "Set the expected pass/fail label for the scenario's steps — the answer key that a QA run's correctPass/falseAlarm counts score against; labels come from --labels <path> or standard input, never from a command-line argument",
+    )
+    .argument('<scenario-id>', 'test scenario whose step labels to set')
+    .option(
+      '--labels <path>',
+      'path to a JSON file holding the labels array, or "-" (or omit) to read it from standard input',
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(
+      async (
+        scenarioId: string,
+        options: { labels?: string | undefined; json: boolean; apiUrl?: string | undefined },
+      ) => {
+        json = options.json;
+        await runScenarioExpectedLabels(
+          scenarioId,
+          { json: options.json, labels: options.labels, apiUrl: options.apiUrl },
           sink,
           env,
         );

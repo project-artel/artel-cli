@@ -283,3 +283,60 @@ export interface CaseDeletePayload {
   projectId: string;
   deleted: true;
 }
+
+/**
+ * 시나리오 스텝 하나. Agent 계약(`QaStep`, artel-agent-server `app/qa/schemas.py`)이 읽는
+ * 필드만 CLI 가 다룬다 — `action`·`caseId`·`hint`·`input`. 저작 챗봇 전용 필드(근거 종류,
+ * GAP/OPENING 구분 등)는 이 CLI 가 쓰지도 보여주지도 않는다.
+ */
+export interface ScenarioStepPayload {
+  /** 1부터 시작하는 위치. `artel scenario expected-labels` 가 스텝을 짚는 번호와 같다. */
+  step: number;
+  action: string;
+  caseId: number | null;
+  hint: string | null;
+  input: string | null;
+  /**
+   * 이 스텝이 통과해야 하는지에 대한 사람의 판단(정답지). `null` 은 "채점하지 않음"이지
+   * "통과해야 함"이 아니다. `artel scenario approve` 로는 바뀌지 않는다 — 유일한 경로는
+   * `artel scenario expected-labels` 다.
+   */
+  expectedPassed: boolean | null;
+}
+
+export interface ScenarioPayload {
+  scenarioId: string;
+  projectId: string;
+  title: string;
+  description: string;
+  steps: ScenarioStepPayload[];
+}
+
+export interface ScenarioSummaryPayload {
+  scenarioId: string;
+  projectId: string;
+  title: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface ScenarioListPayload {
+  projectId: string;
+  scenarios: ScenarioSummaryPayload[];
+}
+
+/**
+ * 서버는 승인 상태를 저장하지 않는다 — `approve` 는 마지막 draft 를 확정 저장할 뿐이고,
+ * 승인 여부를 되읽을 수 있는 필드가 시나리오 어디에도 없다. 그래서 `approved` 는 언제나
+ * `true` 다: 이 호출이 성공했다는 사실 이상은 서버가 기억하지 않는다.
+ */
+export interface ScenarioApprovePayload {
+  scenarioId: string;
+  approved: true;
+}
+
+export interface ScenarioDeletePayload {
+  scenarioId: string;
+  deleted: true;
+  forced: boolean;
+}

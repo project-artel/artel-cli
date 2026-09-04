@@ -11,6 +11,10 @@ import type {
   QaMetricsPayload,
   QaRunPayload,
   QaVerdictValue,
+  ScenarioApprovePayload,
+  ScenarioDeletePayload,
+  ScenarioListPayload,
+  ScenarioPayload,
   StatusPayload,
 } from './contract.js';
 import type { OutputSink } from './envelope.js';
@@ -315,4 +319,58 @@ function money(value: number | null): string {
 
 function number(value: number | null): string {
   return value === null ? '-' : String(value);
+}
+
+export function printScenarioList(sink: OutputSink, payload: ScenarioListPayload): void {
+  if (payload.scenarios.length === 0) {
+    sink.out(`Project ${payload.projectId} has no test scenarios.`);
+    return;
+  }
+  sink.out(`Project ${payload.projectId} — ${String(payload.scenarios.length)} test scenario(s).`);
+  for (const scenario of payload.scenarios) {
+    sink.out(
+      `  ${scenario.scenarioId}  ${scenario.title.length === 0 ? '(untitled)' : scenario.title}  (updated ${scenario.updatedAt ?? '-'})`,
+    );
+  }
+}
+
+/** `scenario create`·`show`·`update` 가 모두 이 한 모양을 낸다(`qa run`/`watch`/`show` 와 같은 규율). */
+export function printScenario(sink: OutputSink, payload: ScenarioPayload): void {
+  sink.out(`Test scenario ${payload.scenarioId} (project ${payload.projectId}).`);
+  sink.out(`  title        ${payload.title.length === 0 ? '(untitled)' : payload.title}`);
+  sink.out(`  description  ${payload.description.length === 0 ? '(none)' : payload.description}`);
+  if (payload.steps.length === 0) {
+    sink.out('  steps        none');
+    return;
+  }
+  sink.out(`  steps        ${String(payload.steps.length)}`);
+  for (const step of payload.steps) {
+    sink.out(
+      `    ${String(step.step)}. ${step.action}${step.caseId === null ? '' : `  case ${String(step.caseId)}`}${
+        step.hint === null ? '' : `  hint: ${step.hint}`
+      }${step.input === null ? '' : `  input: ${step.input}`}  expected: ${describeExpectedPassed(step.expectedPassed)}`,
+    );
+  }
+}
+
+function describeExpectedPassed(value: boolean | null): string {
+  if (value === null) {
+    return 'unscored';
+  }
+  return value ? 'pass' : 'fail';
+}
+
+export function printScenarioApprove(sink: OutputSink, payload: ScenarioApprovePayload): void {
+  sink.out(`Approved test scenario ${payload.scenarioId}.`);
+  sink.out(
+    'The server does not track approval as a gate: it keeps no "approved" field, and an unapproved scenario can already be added to a test run and executed. Approval here is a final save, not a permission check.',
+  );
+}
+
+export function printScenarioDelete(sink: OutputSink, payload: ScenarioDeletePayload): void {
+  sink.out(
+    payload.forced
+      ? `Deleted test scenario ${payload.scenarioId}, along with its QA run history.`
+      : `Deleted test scenario ${payload.scenarioId}.`,
+  );
 }
