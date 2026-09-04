@@ -11,6 +11,14 @@ import type {
   QaMetricsPayload,
   QaRunPayload,
   QaVerdictValue,
+  ScenarioApprovePayload,
+  ScenarioDeletePayload,
+  ScenarioListPayload,
+  ScenarioPayload,
+  TestRunDeletePayload,
+  TestRunListPayload,
+  TestRunPayload,
+  TestRunScenariosPayload,
   StatusPayload,
 } from './contract.js';
 import type { OutputSink } from './envelope.js';
@@ -315,4 +323,117 @@ function money(value: number | null): string {
 
 function number(value: number | null): string {
   return value === null ? '-' : String(value);
+}
+
+export function printScenarioList(sink: OutputSink, payload: ScenarioListPayload): void {
+  if (payload.scenarios.length === 0) {
+    sink.out(`Project ${payload.projectId} has no test scenarios.`);
+    return;
+  }
+  sink.out(`Project ${payload.projectId} — ${String(payload.scenarios.length)} test scenario(s).`);
+  for (const scenario of payload.scenarios) {
+    sink.out(
+      `  ${scenario.scenarioId}  ${scenario.title.length === 0 ? '(untitled)' : scenario.title}  (updated ${scenario.updatedAt ?? '-'})`,
+    );
+  }
+}
+
+/** `scenario create`·`show`·`update` 가 모두 이 한 모양을 낸다(`qa run`/`watch`/`show` 와 같은 규율). */
+export function printScenario(sink: OutputSink, payload: ScenarioPayload): void {
+  sink.out(`Test scenario ${payload.scenarioId} (project ${payload.projectId}).`);
+  sink.out(`  title        ${payload.title.length === 0 ? '(untitled)' : payload.title}`);
+  sink.out(`  description  ${payload.description.length === 0 ? '(none)' : payload.description}`);
+  if (payload.steps.length === 0) {
+    sink.out('  steps        none');
+    return;
+  }
+  sink.out(`  steps        ${String(payload.steps.length)}`);
+  for (const step of payload.steps) {
+    sink.out(
+      `    ${String(step.step)}. ${step.action}${step.caseId === null ? '' : `  case ${String(step.caseId)}`}${
+        step.hint === null ? '' : `  hint: ${step.hint}`
+      }${step.input === null ? '' : `  input: ${step.input}`}  expected: ${describeExpectedPassed(step.expectedPassed)}`,
+    );
+  }
+}
+
+function describeExpectedPassed(value: boolean | null): string {
+  if (value === null) {
+    return 'unscored';
+  }
+  return value ? 'pass' : 'fail';
+}
+
+export function printScenarioApprove(sink: OutputSink, payload: ScenarioApprovePayload): void {
+  sink.out(`Approved test scenario ${payload.scenarioId}.`);
+  sink.out(
+    'The server does not track approval as a gate: it keeps no "approved" field, and an unapproved scenario can already be added to a test run and executed. Approval here is a final save, not a permission check.',
+  );
+}
+
+export function printScenarioDelete(sink: OutputSink, payload: ScenarioDeletePayload): void {
+  sink.out(
+    payload.forced
+      ? `Deleted test scenario ${payload.scenarioId}, along with its QA run history.`
+      : `Deleted test scenario ${payload.scenarioId}.`,
+  );
+}
+
+export function printTestRun(sink: OutputSink, payload: TestRunPayload): void {
+  sink.out(`Test run ${payload.runId} — ${payload.name}.`);
+  sink.out(`  project        ${payload.projectId}`);
+  sink.out(`  description    ${payload.description ?? '-'}`);
+  sink.out(`  created        ${payload.createdAt}`);
+}
+
+export function printTestRunList(sink: OutputSink, payload: TestRunListPayload): void {
+  if (payload.items.length === 0) {
+    sink.out('No test runs.');
+    return;
+  }
+  sink.out(`${String(payload.items.length)} test run(s).`);
+  for (const run of payload.items) {
+    sink.out(
+      `  ${run.runId}  ${run.name}${run.description === null ? '' : `  — ${run.description}`}`,
+    );
+  }
+}
+
+export function printTestRunScenarios(sink: OutputSink, payload: TestRunScenariosPayload): void {
+  if (payload.items.length === 0) {
+    sink.out(`Test run ${payload.runId} has no scenarios bound to it.`);
+    return;
+  }
+  sink.out(
+    `Test run ${payload.runId} — ${String(payload.items.length)} scenario(s), in run order.`,
+  );
+  for (const item of payload.items) {
+    sink.out(`  ${String(item.position)}  ${item.testScenarioId}`);
+  }
+}
+
+export function printTestRunDelete(sink: OutputSink, payload: TestRunDeletePayload): void {
+  const preview = payload.preview;
+  if (!payload.confirmed) {
+    sink.out(`Not deleted. Test run ${payload.runId} would take the following down with it:`);
+    sink.out(`  scenarios in this run           ${String(preview.scenarioCount)}`);
+    sink.out(
+      `  scenarios only in this run      ${String(preview.removableScenarioCount)}${payload.dropScenarios ? ' (would be deleted with --drop-scenarios)' : ' (kept unless you pass --drop-scenarios)'}`,
+    );
+    sink.out(`  of those, kept for QA history   ${String(preview.keptForQaHistoryCount)}`);
+    sink.out('Re-run with --yes to confirm the delete.');
+    return;
+  }
+
+  sink.out(`Deleted test run ${payload.runId}.`);
+  if (payload.dropScenarios) {
+    sink.out(`  scenarios deleted with it       ${String(payload.deletedScenarioCount ?? 0)}`);
+    sink.out(
+      `  kept for QA history             ${String(payload.deletedKeptForQaHistoryCount ?? 0)}`,
+    );
+  } else {
+    sink.out(
+      '  its scenarios were left in place (pass --drop-scenarios to remove the ones only it used)',
+    );
+  }
 }

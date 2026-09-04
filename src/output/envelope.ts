@@ -1,5 +1,8 @@
 import type { ErrorCode } from '../errors.js';
 import type {
+  CaseCreateBatchPayload,
+  CaseDeletePayload,
+  CaseListPayload,
   ErrorEnvelope,
   GameLogoutPayload,
   GameStartPayload,
@@ -8,7 +11,17 @@ import type {
   QaCancelPayload,
   QaDiffPayload,
   QaRunPayload,
+  ScenarioApprovePayload,
+  ScenarioDeletePayload,
+  ScenarioListPayload,
+  ScenarioPayload,
   StatusPayload,
+  TestRunDeletePayload,
+  TestRunListPayload,
+  TestRunPayload,
+  TestRunScenariosPayload,
+  TestCaseDetailPayload,
+  TestCasePayload,
 } from './contract.js';
 
 export type CommandPayload =
@@ -19,7 +32,20 @@ export type CommandPayload =
   | GameLogoutPayload
   | QaRunPayload
   | QaCancelPayload
-  | QaDiffPayload;
+  | QaDiffPayload
+  | TestCasePayload
+  | TestCaseDetailPayload
+  | CaseListPayload
+  | CaseCreateBatchPayload
+  | CaseDeletePayload
+  | ScenarioPayload
+  | ScenarioListPayload
+  | ScenarioApprovePayload
+  | ScenarioDeletePayload
+  | TestRunPayload
+  | TestRunListPayload
+  | TestRunScenariosPayload
+  | TestRunDeletePayload;
 
 /**
  * 출력 두 갈래를 한 곳으로 모은다. 테스트가 실제 stdout 을 건드리지 않고 무엇이 찍혔는지

@@ -221,3 +221,174 @@ export interface QaDiffPayload {
   /** `target - base`. 어느 한쪽이 `null` 인 칸은 `null` 이다. */
   difference: QaMetricsPayload;
 }
+
+/**
+ * `TestCaseResponse`(orchestration `testcase/dto/TestCaseDtos.kt`)와 같은 필드, 같은 이름.
+ * `case list`·`case create`(단건)·`case update` 가 이 모양 그대로 낸다 — 서버가 낸 값을
+ * CLI 가 다시 이름 짓지 않는다.
+ */
+export interface TestCasePayload {
+  id: string;
+  projectId: string;
+  scene: string;
+  step: string;
+  precondition: string | null;
+  expectedValue: string;
+  status: string | null;
+  verificationStatus: string;
+  lastVerifiedBuildId: string | null;
+  createdAt: string;
+}
+
+/** `TestCaseDetailResponse`. [TestCasePayload] 에 `evidenceGaps` 하나만 더 붙는다. `case show` 전용. */
+export interface TestCaseDetailPayload extends TestCasePayload {
+  evidenceGaps: string[];
+}
+
+/** `case list --json`. `TestCaseListResponse` 와 같은 모양이다. */
+export interface CaseListPayload {
+  items: TestCasePayload[];
+}
+
+/**
+ * `case create --json` 가 JSON body 로 배열을 받았을 때, 항목 하나의 결과.
+ *
+ * `created`/`error` 는 정확히 하나만 채워진다 — 성공하면 만들어진 케이스, 실패하면 그
+ * 항목만의 오류다. 한 항목의 실패가 나머지 항목을 막지 않는다([CaseCreateBatchPayload] 참조).
+ */
+export interface CaseCreateResultPayload {
+  /** 입력 배열에서의 0-based 위치. */
+  index: number;
+  created: TestCasePayload | null;
+  error: { code: ErrorCode; message: string } | null;
+}
+
+/**
+ * `case create --json` 가 배열을 받아 여럿을 만들려 했을 때. 서버에 일괄 생성 endpoint 가
+ * 없으므로 CLI 가 항목마다 따로 요청하고, **끝까지 계속한다** — 항목 하나가 400 으로
+ * 막혀도 나머지가 만들어질 기회를 잃지 않는다. `created`/`failed` 로 결과를 한눈에 보고,
+ * 실패한 항목은 [CaseCreateResultPayload.error] 에서 이유를 본다.
+ */
+export interface CaseCreateBatchPayload {
+  projectId: string;
+  requested: number;
+  created: number;
+  failed: number;
+  results: CaseCreateResultPayload[];
+}
+
+/** `case delete --json`. 서버는 204 로 몸통 없이 답하므로, 지운 사실은 CLI 가 이 모양으로 만든다. */
+export interface CaseDeletePayload {
+  id: string;
+  projectId: string;
+  deleted: true;
+}
+
+/**
+ * 시나리오 스텝 하나. Agent 계약(`QaStep`, artel-agent-server `app/qa/schemas.py`)이 읽는
+ * 필드만 CLI 가 다룬다 — `action`·`caseId`·`hint`·`input`. 저작 챗봇 전용 필드(근거 종류,
+ * GAP/OPENING 구분 등)는 이 CLI 가 쓰지도 보여주지도 않는다.
+ */
+export interface ScenarioStepPayload {
+  /** 1부터 시작하는 위치. `artel scenario expected-labels` 가 스텝을 짚는 번호와 같다. */
+  step: number;
+  action: string;
+  caseId: number | null;
+  hint: string | null;
+  input: string | null;
+  /**
+   * 이 스텝이 통과해야 하는지에 대한 사람의 판단(정답지). `null` 은 "채점하지 않음"이지
+   * "통과해야 함"이 아니다. `artel scenario approve` 로는 바뀌지 않는다 — 유일한 경로는
+   * `artel scenario expected-labels` 다.
+   */
+  expectedPassed: boolean | null;
+}
+
+export interface ScenarioPayload {
+  scenarioId: string;
+  projectId: string;
+  title: string;
+  description: string;
+  steps: ScenarioStepPayload[];
+}
+
+export interface ScenarioSummaryPayload {
+  scenarioId: string;
+  projectId: string;
+  title: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface ScenarioListPayload {
+  projectId: string;
+  scenarios: ScenarioSummaryPayload[];
+}
+
+/**
+ * 서버는 승인 상태를 저장하지 않는다 — `approve` 는 마지막 draft 를 확정 저장할 뿐이고,
+ * 승인 여부를 되읽을 수 있는 필드가 시나리오 어디에도 없다. 그래서 `approved` 는 언제나
+ * `true` 다: 이 호출이 성공했다는 사실 이상은 서버가 기억하지 않는다.
+ */
+export interface ScenarioApprovePayload {
+  scenarioId: string;
+  approved: true;
+}
+
+export interface ScenarioDeletePayload {
+  scenarioId: string;
+  deleted: true;
+  forced: boolean;
+}
+
+
+/**
+ * test run 하나. `qa run` 이 실행하는 시나리오 묶음(자료)이지, 실행 자체(`QaRunPayload`)가
+ * 아니다 — 이름이 가깝지만 이 둘은 서로 다른 것을 가리킨다.
+ */
+export interface TestRunPayload {
+  runId: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+}
+
+export interface TestRunListPayload {
+  items: TestRunPayload[];
+}
+
+/** [position] 이 실행 순서다. 벤치마크의 첫 시나리오는 저장 없이 새로 설치한 상태를 가정하므로 0번이어야 한다. */
+export interface TestRunScenarioItemPayload {
+  position: number;
+  testScenarioId: string;
+}
+
+/** `run scenarios` 의 조회와 교체(`--set`)가 같은 모양을 낸다. */
+export interface TestRunScenariosPayload {
+  runId: string;
+  items: TestRunScenarioItemPayload[];
+}
+
+/** 지우기 전에 무엇이 같이 없어지는지 미리 센 값. `run delete` 가 실제로 지우기 전에 항상 이것부터 보여준다. */
+export interface TestRunDeletionPreviewPayload {
+  scenarioCount: number;
+  removableScenarioCount: number;
+  keptForQaHistoryCount: number;
+}
+
+/**
+ * `run delete` 한 번의 전체 결과.
+ *
+ * [confirmed] 가 `false` 면 `--yes` 없이 불러 미리보기만 하고 실제로는 지우지 않은 것이다 —
+ * 그때 [deletedScenarioCount]·[deletedKeptForQaHistoryCount] 는 `null` 이다(시도하지 않았다는
+ * 뜻이지 0건이라는 뜻이 아니다). [preview] 는 두 경우 모두 항상 채워진다.
+ */
+export interface TestRunDeletePayload {
+  runId: string;
+  dropScenarios: boolean;
+  confirmed: boolean;
+  preview: TestRunDeletionPreviewPayload;
+  deletedScenarioCount: number | null;
+  deletedKeptForQaHistoryCount: number | null;
+}

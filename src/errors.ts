@@ -35,6 +35,17 @@ export const ERROR_CODES = [
   'qa_watch_disconnected',
   'qa_watch_timeout',
   'qa_invalid_arch',
+  'case_not_found',
+  'case_invalid_request',
+  'case_invalid_body',
+  'scenario_not_found',
+  'scenario_project_not_found',
+  'scenario_has_qa_history',
+  'scenario_invalid_steps',
+  'scenario_invalid_labels',
+  'run_not_found',
+  'run_invalid_request',
+  'run_has_qa_history',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
