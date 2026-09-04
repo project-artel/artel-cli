@@ -36,8 +36,20 @@ Fill this document during project initialization. Agents must verify commands ag
     launch registered), `log-file` (`-logFile` path under `~/.artel/logs`),
     `start-flow` and `logout-flow` (the two orchestrations, each a dependency
     injection point like `auth/login-flow`).
+  - `src/commands/doc/` — `upload`, `scan`. `upload` puts a PDF into a project;
+    `scan` tells the game running a build to produce its `evidence` document.
+    Both take `--watch`, which follows a Server-Sent Events stream instead of
+    polling.
+  - `src/doc/` — `context` (the API base URL and the credential the two
+    commands share), `upload-flow` (the three-call upload and the optional
+    wait on `parse_status`), `scan-flow` (the scan order and the optional wait
+    on `lastScan.state`).
   - `src/http/` — `client` (the CLI token exchange call and the SDK token mint
-    call), `gameInstances` (lists a project's game instances), `errors`.
+    call), `gameInstances` (lists a project's game instances), `documents` (the
+    upload ticket, the presigned `PUT`, the registration, and the project
+    document event stream), `contentMap` (the scan order and the content map
+    event stream), `sse` (frame reading and the reconnecting watcher those two
+    streams share), `errors`.
   - `src/output/` — `contract` (the `--json` shapes), `envelope`, `human`.
   - `src/config.ts` — `ARTEL_API_BASE_URL` and `ARTEL_CONSOLE_BASE_URL`.
 - Dependency direction: `cli` → `run` → `commands` → {`auth`, `game`,
@@ -52,8 +64,11 @@ Fill this document during project initialization. Agents must verify commands ag
   ever holds the CLI credential.
 - External systems:
   - the orchestration server's end-user API (REST, plus Server-Sent Events for
-    QA run progress). `insomnia-api` in the sibling repository holds its OpenAPI
-    description.
+    QA run progress, project document extraction, and content map scans).
+    `insomnia-api` in the sibling repository holds its OpenAPI description.
+  - object storage, reached only through a presigned URL the orchestration
+    server issues. `artel doc upload` sends the file bytes straight there, so
+    they never pass through the orchestration server.
   - a Unity player carrying the Artel SDK, launched as a child process
 - Persistent data: the signed-in user's credentials on the local machine. No
   other state is kept between invocations.
@@ -93,6 +108,20 @@ Fill this document during project initialization. Agents must verify commands ag
     checks the `Host` header, and compares `state` with `timingSafeEqual`.
   - There is no `--token` flag. A secret on the process arguments is visible to
     every other user on the machine through `ps`; `ARTEL_TOKEN` fills that need.
+
+### Server-Sent Events take the same Bearer token as everything else
+
+The content map stream's KDoc says it is cookie-authenticated. That sentence
+describes a browser: `EventSource` cannot set request headers, so the console
+has nothing but the `artel_access_token` cookie to send. It is not a rule
+against headers. `SecurityConfig.cookieTokenConverter` runs the standard bearer
+token converter first and falls back to the cookie only when no `Authorization`
+header arrived, so the CLI's token works on every stream. `tests/doc-scan.test.ts`
+asserts the header reaches the stream endpoint.
+
+The CLI does not use `EventSource` for the same reason `qa watch` does not:
+Node's `EventSource` accepts no request headers and reconnects forever, which in
+CI is a job that never ends.
 
 ### What the SDK imposes on a launched build
 

@@ -1,17 +1,24 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
+import path from 'node:path';
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runAuthLogin } from '../src/commands/auth/login.js';
+import { runDocScan } from '../src/commands/doc/scan.js';
+import { runDocUpload } from '../src/commands/doc/upload.js';
 import { enforcesFileMode, writeCredential } from '../src/credentials/store.js';
 import { CREDENTIAL_FILE_VERSION } from '../src/credentials/types.js';
 import type {
+  ContentMapScanPayload,
+  DocumentUploadPayload,
   ErrorEnvelope,
   LoginPayload,
   LogoutPayload,
   StatusPayload,
 } from '../src/output/contract.js';
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, runCli } from '../src/run.js';
+import { startFakeDocServer, type FakeDocServer } from './doc-helpers.js';
 import {
   callBack,
   createMemorySink,
@@ -273,5 +280,76 @@ describe.runIf(enforcesFileMode())('error envelope', () => {
     expect(Object.keys(envelope)).toEqual(['error']);
     expect(Object.keys(envelope.error).sort()).toEqual(['code', 'message']);
     expect(envelope.error.code).toBe('credential_file_mode');
+  });
+});
+
+const DOCUMENT_UPLOAD_KEYS = [
+  'contentType',
+  'documentId',
+  'fileName',
+  'parseStatus',
+  'projectId',
+  'sizeBytes',
+  'stale',
+  'uploadedAt',
+  'version',
+  'watched',
+];
+
+const CONTENT_MAP_SCAN_KEYS = [
+  'error',
+  'finishedAt',
+  'gameBuildId',
+  'gameInstanceId',
+  'gameInstanceName',
+  'ingestedDocuments',
+  'projectId',
+  'requestedAt',
+  'state',
+  'watched',
+];
+
+describe('doc --json key sets', () => {
+  let docs: FakeDocServer;
+  let pdfPath: string;
+
+  beforeEach(async () => {
+    docs = await startFakeDocServer();
+    pdfPath = path.join(temp.root, 'plan.pdf');
+    await fs.writeFile(pdfPath, '%PDF-1.7\n');
+  });
+
+  afterEach(async () => {
+    await docs.close();
+  });
+
+  it('doc upload emits exactly its contracted keys', async () => {
+    const sink = createMemorySink();
+    await runDocUpload(
+      pdfPath,
+      { json: true, project: '12', watch: false, timeoutSeconds: 30 },
+      sink,
+      { ARTEL_TOKEN: 'artel_contract_token', ARTEL_API_BASE_URL: docs.baseUrl },
+    );
+
+    expect(Object.keys(sink.lastJson<DocumentUploadPayload>()).sort()).toEqual(
+      DOCUMENT_UPLOAD_KEYS,
+    );
+  });
+
+  it('doc scan emits exactly its contracted keys', async () => {
+    const sink = createMemorySink();
+    await runDocScan(
+      { json: true, project: '12', build: '34', watch: false, timeoutSeconds: 30 },
+      sink,
+      {
+        ARTEL_TOKEN: 'artel_contract_token',
+        ARTEL_API_BASE_URL: docs.baseUrl,
+      },
+    );
+
+    expect(Object.keys(sink.lastJson<ContentMapScanPayload>()).sort()).toEqual(
+      CONTENT_MAP_SCAN_KEYS,
+    );
   });
 });

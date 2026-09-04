@@ -341,7 +341,6 @@ export interface ScenarioDeletePayload {
   forced: boolean;
 }
 
-
 /**
  * test run 하나. `qa run` 이 실행하는 시나리오 묶음(자료)이지, 실행 자체(`QaRunPayload`)가
  * 아니다 — 이름이 가깝지만 이 둘은 서로 다른 것을 가리킨다.
@@ -391,4 +390,51 @@ export interface TestRunDeletePayload {
   preview: TestRunDeletionPreviewPayload;
   deletedScenarioCount: number | null;
   deletedKeptForQaHistoryCount: number | null;
+}
+
+/**
+ * `doc upload` 한 번의 결과.
+ *
+ * [parseStatus] 는 `PENDING` · `EXTRACTING` · `EXTRACTED` · `FAILED` 중 하나다. 등록은
+ * 추출을 기다리지 않으므로 `--watch` 없이 부르면 여기에 거의 언제나 `PENDING` 이 온다 —
+ * 그것은 실패가 아니라 "서버가 이제 시작한다" 이다.
+ *
+ * [stale] 이 `null` 인 것은 `--watch` 를 주지 않아 확인하지 않았다는 뜻이다. `true` 는
+ * `parseStatus` 가 `EXTRACTING` 인데 서버가 그 추출을 들고 있지 않다는 뜻이라, 기다려도
+ * 움직이지 않는다.
+ */
+export interface DocumentUploadPayload {
+  projectId: string;
+  documentId: string;
+  version: number;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  parseStatus: string;
+  stale: boolean | null;
+  watched: boolean;
+}
+
+/**
+ * `doc scan` 한 번의 결과.
+ *
+ * [state] 는 `REQUESTED` · `SUCCEEDED` · `FAILED` 중 하나다. `--watch` 없이 부르면 언제나
+ * `REQUESTED` 다 — 명령이 나갔다는 뜻이고 스캔이 끝났다는 뜻이 아니다.
+ *
+ * [finishedAt] · [ingestedDocuments] · [error] 는 스캔이 끝나야 값이 생기므로 `REQUESTED`
+ * 에서는 셋 다 `null` 이다. [ingestedDocuments] 가 `0` 인데 [state] 가 `SUCCEEDED` 면
+ * 스캔은 돌았는데 올라온 문서가 없었다는 뜻이다.
+ */
+export interface ContentMapScanPayload {
+  projectId: string;
+  gameBuildId: string;
+  gameInstanceId: string;
+  gameInstanceName: string;
+  state: string;
+  requestedAt: string;
+  finishedAt: string | null;
+  ingestedDocuments: number | null;
+  error: string | null;
+  watched: boolean;
 }

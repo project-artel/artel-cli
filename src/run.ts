@@ -10,6 +10,8 @@ import { runCaseDelete } from './commands/case/delete.js';
 import { runCaseList } from './commands/case/list.js';
 import { runCaseShow } from './commands/case/show.js';
 import { runCaseUpdate } from './commands/case/update.js';
+import { runDocScan } from './commands/doc/scan.js';
+import { runDocUpload } from './commands/doc/upload.js';
 import { runGameLogout } from './commands/game/logout.js';
 import { runGameStart } from './commands/game/start.js';
 import { runQaCancel } from './commands/qa/cancel.js';
@@ -46,6 +48,12 @@ const DEFAULT_EXPIRES_IN_DAYS = 90;
  * 마감은 하루라, 상한 없이 두면 무엇 하나 잘못됐을 때 CI job 이 끝나지 않는다. `0` 은 무제한이다.
  */
 const DEFAULT_QA_TIMEOUT_SECONDS = 3_600;
+
+/**
+ * `doc upload --watch`/`doc scan --watch` 가 기다리는 기본 상한(초). 문서 추출은 LLM 한 번,
+ * 스캔은 씬을 걸어 다니는 일이라 분 단위지 시간 단위가 아니다. `0` 은 무제한이다.
+ */
+const DEFAULT_DOC_TIMEOUT_SECONDS = 600;
 
 /** `qa` 명령들이 공유하는 `--console-url` 설명. 받아만 두고 쓰지 않는 이유를 그대로 적는다. */
 const QA_CONSOLE_URL_HELP =
@@ -943,6 +951,107 @@ const RUN_CONSOLE_URL_HELP =
       },
     );
 
+  const DOC_CONSOLE_URL_HELP =
+    'console base URL; doc commands never call the console, so this is accepted and unused';
+
+  const doc = program
+    .command('doc')
+    .description(
+      'Upload a project document, and tell a running game to scan itself for `evidence`',
+    );
+
+  doc
+    .command('upload')
+    .description(
+      'Upload a PDF project document. The bytes go straight to storage, never through the orchestration server; extraction into `knowledge` starts once the server registers the version',
+    )
+    .argument('<file>', 'PDF file to upload')
+    .requiredOption('--project <id>', 'project the document belongs to')
+    .option(
+      '--watch',
+      'follow the extraction until parse status reaches EXTRACTED or FAILED, instead of exiting right after registration',
+      false,
+    )
+    .option(
+      '--timeout <seconds>',
+      'how long --watch waits before giving up; 0 waits forever',
+      String(DEFAULT_DOC_TIMEOUT_SECONDS),
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', DOC_CONSOLE_URL_HELP)
+    .action(
+      async (
+        file: string,
+        options: {
+          project: string;
+          watch: boolean;
+          timeout: string;
+          json: boolean;
+          apiUrl?: string | undefined;
+        },
+      ) => {
+        json = options.json;
+        exitCode = await runDocUpload(
+          file,
+          {
+            json: options.json,
+            project: options.project,
+            watch: options.watch,
+            timeoutSeconds: parseTimeoutSeconds(options.timeout),
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  doc
+    .command('scan')
+    .description(
+      'Tell the game that is running this build to scan itself and upload an `evidence` document. The command is sent, not finished: it answers as soon as the running game has the order',
+    )
+    .requiredOption('--project <id>', 'project the game build belongs to')
+    .requiredOption('--build <id>', 'game build to scan')
+    .option(
+      '--watch',
+      'follow the scan until it reaches SUCCEEDED or FAILED, instead of exiting once the order is sent',
+      false,
+    )
+    .option(
+      '--timeout <seconds>',
+      'how long --watch waits before giving up; 0 waits forever',
+      String(DEFAULT_DOC_TIMEOUT_SECONDS),
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', DOC_CONSOLE_URL_HELP)
+    .action(
+      async (options: {
+        project: string;
+        build: string;
+        watch: boolean;
+        timeout: string;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        exitCode = await runDocScan(
+          {
+            json: options.json,
+            project: options.project,
+            build: options.build,
+            watch: options.watch,
+            timeoutSeconds: parseTimeoutSeconds(options.timeout),
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
 /** `--set` 의 원문을 콤마로 가른다. 빈 문자열 항목은 실수(연달아 찍은 콤마 등)로 보고 버린다. */
 function parseScenarioIds(raw: string | undefined): readonly string[] | undefined {
   if (raw === undefined) {
@@ -953,7 +1062,6 @@ function parseScenarioIds(raw: string | undefined): readonly string[] | undefine
     .map((id) => id.trim())
     .filter((id) => id.length > 0);
 }
-
 
   try {
     await program.parseAsync(argv, { from: 'user' });

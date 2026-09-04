@@ -46,6 +46,17 @@ export const ERROR_CODES = [
   'run_not_found',
   'run_invalid_request',
   'run_has_qa_history',
+  'document_file_unreadable',
+  'document_project_not_found',
+  'document_rejected',
+  'document_duplicate',
+  'document_upload_failed',
+  'document_watch_timeout',
+  'document_watch_disconnected',
+  'content_map_build_not_found',
+  'content_map_game_not_connected',
+  'content_map_watch_timeout',
+  'content_map_watch_disconnected',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -1,6 +1,10 @@
+import type { ContentMapScanEvent } from '../doc/scan-flow.js';
+import type { DocumentUploadEvent } from '../doc/upload-flow.js';
 import { describeSelector, ratio } from '../qa/diff.js';
 import type { QaFollowEvent } from '../qa/follow.js';
 import type {
+  ContentMapScanPayload,
+  DocumentUploadPayload,
   GameLogoutPayload,
   GameStartPayload,
   LoginPayload,
@@ -434,6 +438,99 @@ export function printTestRunDelete(sink: OutputSink, payload: TestRunDeletePaylo
   } else {
     sink.out(
       '  its scenarios were left in place (pass --drop-scenarios to remove the ones only it used)',
+    );
+  }
+}
+
+/** `doc upload` 한 줄. 진행 사건은 stderr 로 가고 이 요약은 stdout 으로 간다. */
+export function describeDocumentUploadEvent(event: DocumentUploadEvent): string {
+  switch (event.kind) {
+    case 'ticket':
+      return `upload url issued for ${event.objectKey} (expires ${event.expiresAt})`;
+    case 'uploaded':
+      return `uploaded ${String(event.sizeBytes)} bytes`;
+    case 'registered':
+      return `registered as document ${event.documentId} version ${String(event.version)} (${event.parseStatus})`;
+    case 'parse-status':
+      return `  parse status ${event.parseStatus}${event.stale ? ' (stale: the server is not holding this extraction)' : ''}`;
+    case 'reconnect':
+      return `  event stream dropped; reconnecting in ${String(event.delayMs)}ms (attempt ${String(event.attempt)}/${String(event.of)})`;
+  }
+}
+
+export function printDocumentUpload(sink: OutputSink, payload: DocumentUploadPayload): void {
+  sink.out(
+    `Uploaded ${payload.fileName} to project ${payload.projectId} as document ${payload.documentId}.`,
+  );
+  sink.out(`  version        ${String(payload.version)}`);
+  sink.out(`  size           ${String(payload.sizeBytes)} bytes`);
+  sink.out(`  uploaded at    ${payload.uploadedAt}`);
+  sink.out(`  parse status   ${payload.parseStatus}${describeStale(payload.stale)}`);
+
+  if (payload.watched) {
+    sink.out(describeParseOutcome(payload));
+    return;
+  }
+  sink.out(
+    'Extraction runs on the server after this command exits, so the status above is the one at registration time. Pass --watch to follow it to EXTRACTED or FAILED.',
+  );
+}
+
+function describeStale(stale: boolean | null): string {
+  if (stale === null) {
+    return '';
+  }
+  return stale ? '  (stale)' : '';
+}
+
+function describeParseOutcome(payload: DocumentUploadPayload): string {
+  if (payload.stale === true) {
+    return 'The server restarted while this document was being extracted, so the row is stuck at EXTRACTING and will not move on its own. Delete this version and upload it again.';
+  }
+  if (payload.parseStatus === 'EXTRACTED') {
+    return 'The document was read and its `knowledge` items are stored.';
+  }
+  return 'The extraction failed. The document version stays, but no `knowledge` came out of it.';
+}
+
+/** `doc scan` 한 줄. */
+export function describeContentMapScanEvent(event: ContentMapScanEvent): string {
+  switch (event.kind) {
+    case 'requested':
+      return `scan requested on game instance ${event.gameInstanceName} (${event.gameInstanceId}) at ${event.requestedAt}`;
+    case 'scan-state':
+      return `  scan is ${event.state}${event.error === null ? '' : ` — ${event.error}`}`;
+    case 'ingest':
+      return `  documents ${String(event.progress.ingestedDocuments)} ingested, ${String(event.progress.failedDocuments)} failed, of ${String(event.progress.receivedDocuments)} received`;
+    case 'reconnect':
+      return `  event stream dropped; reconnecting in ${String(event.delayMs)}ms (attempt ${String(event.attempt)}/${String(event.of)})`;
+  }
+}
+
+export function printContentMapScan(sink: OutputSink, payload: ContentMapScanPayload): void {
+  sink.out(
+    `Told game instance ${payload.gameInstanceName} (${payload.gameInstanceId}) to scan game build ${payload.gameBuildId}.`,
+  );
+  sink.out(`  project        ${payload.projectId}`);
+  sink.out(`  state          ${payload.state}`);
+  sink.out(`  requested at   ${payload.requestedAt}`);
+  sink.out(`  finished at    ${payload.finishedAt ?? '-'}`);
+  sink.out(
+    `  documents      ${payload.ingestedDocuments === null ? '-' : String(payload.ingestedDocuments)} ingested`,
+  );
+  if (payload.error !== null) {
+    sink.out(`  error          ${payload.error}`);
+  }
+
+  if (!payload.watched) {
+    sink.out(
+      'The command was sent, not finished: a scan walks the scenes inside the running game. Pass --watch to follow it, or read the content map later.',
+    );
+    return;
+  }
+  if (payload.state === 'SUCCEEDED' && payload.ingestedDocuments === 0) {
+    sink.out(
+      'The scan ran but no `evidence` document arrived, so nothing was ingested. The game finished the walk without uploading anything.',
     );
   }
 }
