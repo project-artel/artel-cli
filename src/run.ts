@@ -231,6 +231,10 @@ export async function runCli(
       false,
     )
     .option(
+      '--window-label <text>',
+      'text shown in the game window, so multiple launches can be told apart; omit to launch without one',
+    )
+    .option(
       '--timeout <seconds>',
       'seconds to wait for the game to register',
       String(DEFAULT_REGISTRATION_TIMEOUT_MS / 1_000),
@@ -245,6 +249,7 @@ export async function runCli(
         width: string;
         height: string;
         fullscreen: boolean;
+        windowLabel?: string | undefined;
         timeout: string;
         json: boolean;
         apiUrl?: string | undefined;
@@ -259,6 +264,7 @@ export async function runCli(
             width: parsePositiveInt(options.width, '--width'),
             height: parsePositiveInt(options.height, '--height'),
             fullscreen: options.fullscreen,
+            windowLabel: options.windowLabel,
             timeoutSeconds: parsePositiveInt(options.timeout, '--timeout'),
             apiUrl: options.apiUrl,
             consoleUrl: options.consoleUrl,
@@ -432,6 +438,10 @@ export async function runCli(
       '--label <name>',
       'name of the experiment every run in this matrix belongs to. Name the experiment only — the arm is already in run_config, so writing "arm:map-only" here records the same fact twice and the two drift',
     )
+    .option(
+      '--window-label <text>',
+      'text shown in every launched game window, in front of the slot number and axis combination this matrix already generates for each one; omit to show only the generated part',
+    )
     .option('--width <n>', 'window width in pixels', String(DEFAULT_SCREEN_WIDTH))
     .option('--height <n>', 'window height in pixels', String(DEFAULT_SCREEN_HEIGHT))
     .option(
@@ -455,6 +465,7 @@ export async function runCli(
         contentMapMode?: string | undefined;
         knowledgeMode?: string | undefined;
         label?: string | undefined;
+        windowLabel?: string | undefined;
         width: string;
         height: string;
         launchTimeout: string;
@@ -480,6 +491,7 @@ export async function runCli(
                 ? [null]
                 : parseAxisValues(options.knowledgeMode, '--knowledge-mode', KNOWLEDGE_MODES),
             label: options.label === undefined ? undefined : parseLabel(options.label),
+            windowLabel: options.windowLabel,
             slots: requireDistinctSlots(options.slot),
             width: parsePositiveInt(options.width, '--width'),
             height: parsePositiveInt(options.height, '--height'),

@@ -75,6 +75,7 @@ describe('runGameStartFlow', () => {
           width: 1280,
           height: 720,
           fullscreen: false,
+          windowLabel: null,
           registrationTimeoutMs: 2_000,
           processEnv: { PATH: '/usr/bin' },
         },
@@ -106,6 +107,7 @@ describe('runGameStartFlow', () => {
           width: 1280,
           height: 720,
           fullscreen: false,
+          windowLabel: null,
           registrationTimeoutMs: 2_000,
           processEnv: { PATH: '/usr/bin' },
         },
@@ -135,6 +137,7 @@ describe('runGameStartFlow', () => {
           width: 1280,
           height: 720,
           fullscreen: false,
+          windowLabel: null,
           registrationTimeoutMs: 30,
           processEnv: {},
         },
@@ -161,6 +164,7 @@ describe('runGameStartFlow', () => {
           width: 1280,
           height: 720,
           fullscreen: false,
+          windowLabel: null,
           registrationTimeoutMs: 5_000,
           processEnv: {},
         },
@@ -196,6 +200,7 @@ describe('runGameStartFlow', () => {
           width: 1280,
           height: 720,
           fullscreen: false,
+          windowLabel: null,
           registrationTimeoutMs: 1_000,
           processEnv: {},
         },
@@ -224,6 +229,7 @@ describe('runGameStartFlow', () => {
           width: 1280,
           height: 720,
           fullscreen: false,
+          windowLabel: null,
           registrationTimeoutMs: 1_000,
           processEnv: {},
         },
@@ -331,6 +337,74 @@ describe('artel game start (command layer)', () => {
       expect(sink.stdout).toHaveLength(1);
       expect(sink.everything()).not.toContain(SDK_TOKEN);
       expect(sink.everything()).not.toContain('artel_cli_token');
+    } finally {
+      await api.close();
+    }
+  });
+
+  it('leaves -artel-window-label out of argv when --window-label was not given', async () => {
+    const api = await startFakeGameServer({
+      sdkToken: SDK_TOKEN,
+      instanceSequence: [[], [instance()]],
+    });
+    try {
+      await runGameStart(
+        {
+          json: true,
+          project: '42',
+          build: '/games/my-game',
+          width: 1280,
+          height: 720,
+          fullscreen: false,
+          timeoutSeconds: 5,
+        },
+        createMemorySink(),
+        {
+          ARTEL_CONFIG_DIR: temp.configDir,
+          ARTEL_API_BASE_URL: api.baseUrl,
+          ARTEL_CONSOLE_BASE_URL: CONSOLE_BASE_URL,
+          ARTEL_TOKEN: 'artel_cli_token',
+        },
+        () => deps(api),
+      );
+
+      expect(spawner.calls[0]?.args).not.toContain('-artel-window-label');
+    } finally {
+      await api.close();
+    }
+  });
+
+  it('carries --window-label into argv as -artel-window-label <text>', async () => {
+    const api = await startFakeGameServer({
+      sdkToken: SDK_TOKEN,
+      instanceSequence: [[], [instance()]],
+    });
+    try {
+      await runGameStart(
+        {
+          json: true,
+          project: '42',
+          build: '/games/my-game',
+          width: 1280,
+          height: 720,
+          fullscreen: false,
+          windowLabel: 'nightly-2x2',
+          timeoutSeconds: 5,
+        },
+        createMemorySink(),
+        {
+          ARTEL_CONFIG_DIR: temp.configDir,
+          ARTEL_API_BASE_URL: api.baseUrl,
+          ARTEL_CONSOLE_BASE_URL: CONSOLE_BASE_URL,
+          ARTEL_TOKEN: 'artel_cli_token',
+        },
+        () => deps(api),
+      );
+
+      const args = spawner.calls[0]?.args ?? [];
+      const index = args.indexOf('-artel-window-label');
+      expect(index).toBeGreaterThanOrEqual(0);
+      expect(args[index + 1]).toBe('nightly-2x2');
     } finally {
       await api.close();
     }

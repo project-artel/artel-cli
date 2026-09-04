@@ -35,6 +35,7 @@ describe('buildGameLaunchArgs', () => {
     width: 1280,
     height: 720,
     fullscreen: false,
+    windowLabel: null,
   };
 
   it('never includes -batchmode', () => {
@@ -96,5 +97,28 @@ describe('buildGameLaunchArgs', () => {
     const args = buildGameLaunchArgs({ ...base, secure: true, logout: false });
     const index = args.indexOf('-artel-secure');
     expect(args[index + 1]).toBe('true');
+  });
+
+  it('leaves -artel-window-label out entirely when there is no label', () => {
+    // `--window-label` 을 안 준 실행은 오늘과 바이트 단위로 같은 argv 를 내야 한다.
+    const withoutLabel = buildGameLaunchArgs({ ...base, windowLabel: null, logout: false });
+    const withDefaultBase = buildGameLaunchArgs({ ...base, logout: false });
+    expect(withoutLabel).not.toContain('-artel-window-label');
+    expect(withoutLabel).toEqual(withDefaultBase);
+  });
+
+  it('treats an empty string the same as no label', () => {
+    const args = buildGameLaunchArgs({ ...base, windowLabel: '', logout: false });
+    expect(args).not.toContain('-artel-window-label');
+  });
+
+  it('appends -artel-window-label <value> at the end of argv when a label is given', () => {
+    const args = buildGameLaunchArgs({
+      ...base,
+      windowLabel: 'slot 0 testRun=1 contentMap=off knowledge=off',
+      logout: false,
+    });
+    expect(args.at(-2)).toBe('-artel-window-label');
+    expect(args.at(-1)).toBe('slot 0 testRun=1 contentMap=off knowledge=off');
   });
 });

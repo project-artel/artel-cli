@@ -17,6 +17,7 @@ import type { QaContext } from '../../qa/context.js';
 import type { QaFollowEvent } from '../../qa/follow.js';
 import {
   assignToSlots,
+  buildMatrixWindowLabel,
   describeCombination,
   expandCombinations,
   type AxisValue,
@@ -31,6 +32,12 @@ export interface QaMatrixCommandOptions {
   contentMapModes: readonly AxisValue[];
   knowledgeModes: readonly AxisValue[];
   label?: string | undefined;
+  /**
+   * `--window-label`. `--label` 과 다른 값이다 — `--label` 은 서버로 가는 실험 이름이고,
+   * 이것은 서버로 가지 않고 각 조합이 띄우는 게임 창에만 [buildMatrixWindowLabel] 을 거쳐
+   * 뜬다. 안 주면 슬롯 번호와 축 조합만으로 문구를 만든다.
+   */
+  windowLabel?: string | undefined;
   /** `--slot` 을 적은 순서. 첨자가 슬롯 번호다. */
   slots: readonly string[];
   width: number;
@@ -260,6 +267,9 @@ async function runCombination(
           height: options.height,
           // 조합을 나란히 놓고 보려고 게임 여럿을 한 화면에 띄운다. 전체 화면은 서로를 덮는다.
           fullscreen: false,
+          // 조합마다 게임을 다시 띄우므로(위 "왜 런마다 게임을 다시 띄우나" 참고) launch 마다
+          // 새로 계산한다. `--window-label` 없이도 슬롯 번호와 축 조합으로 창끼리 구분된다.
+          windowLabel: buildMatrixWindowLabel(combination, slot, options.windowLabel ?? null),
           registrationTimeoutMs: options.launchTimeoutSeconds * 1_000,
           processEnv: env,
         },

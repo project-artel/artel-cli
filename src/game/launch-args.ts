@@ -42,6 +42,14 @@ export interface GameLaunchArgsOptions {
   fullscreen: boolean;
   /** `artel game logout` 만 켠다. */
   logout: boolean;
+  /**
+   * 창에 띄울 문구. `null` 이거나 빈 문자열이면 인자 목록에 아예 싣지 않는다 — `--window-label`
+   * 을 안 준 기존 실행은 오늘과 바이트 단위로 같은 argv 를 내야 한다.
+   *
+   * 토큰(`ARTEL_SDK_TOKEN`)과 달리 환경 변수가 아니라 여기, argv 로 넘긴다. label 은 비밀이
+   * 아니다 — 같은 머신의 다른 사용자가 `ps` 로 보는 것이 문제가 되지 않는다.
+   */
+  windowLabel: string | null;
 }
 
 /**
@@ -51,6 +59,11 @@ export interface GameLaunchArgsOptions {
  *
  * `-batchmode` 는 절대 넣지 않는다: SDK 의 화면 캡처는 back buffer 를 읽는데 batchmode 는
  * 그걸 만들지 않아서 캡처가 조용히 빈 화면으로 나온다(README 참고).
+ *
+ * `-artel-window-label` 은 ARTEL-826(artel-sdk)이 읽어 화면에 그린다. token 과 달리 argv 로
+ * 넘기는 이유는 `windowLabel` 필드 자체의 doc 에 있다 — 비밀이 아니라서다. `windowLabel` 이
+ * `null` 이거나 빈 문자열이면 이 인자를 아예 뺀다: `--window-label` 을 준 적 없는 실행이
+ * 오늘과 다른 argv 를 내면 안 되기 때문이다.
  */
 export function buildGameLaunchArgs(options: GameLaunchArgsOptions): string[] {
   const args = [
@@ -75,6 +88,9 @@ export function buildGameLaunchArgs(options: GameLaunchArgsOptions): string[] {
   }
   if (options.logout) {
     args.push('-artel-logout');
+  }
+  if (options.windowLabel !== null && options.windowLabel.length > 0) {
+    args.push('-artel-window-label', options.windowLabel);
   }
   return args;
 }
