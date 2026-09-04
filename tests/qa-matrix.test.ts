@@ -5,7 +5,7 @@ import { runQaRun } from '../src/commands/qa/run.js';
 import type { GameProcessSpawner } from '../src/game/process.js';
 import type { GameStartDeps } from '../src/game/start-flow.js';
 import type { QaMatrixPayload } from '../src/output/contract.js';
-import { assignToSlots, expandCombinations } from '../src/qa/matrix.js';
+import { assignToSlots, buildMatrixWindowLabel, expandCombinations } from '../src/qa/matrix.js';
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, runCli } from '../src/run.js';
 import { createMemorySink, createTempConfig, type TempConfig } from './helpers.js';
 import { startFakeMatrixServer, type FakeMatrixServer } from './matrix-helpers.js';
@@ -99,6 +99,53 @@ describe('assignToSlots', () => {
   });
 });
 
+describe('buildMatrixWindowLabel', () => {
+  it('builds slot number and axis combination when no --window-label was given', () => {
+    const combination = expandCombinations({
+      testRunIds: ['1'],
+      contentMapModes: ['off'],
+      knowledgeModes: [null],
+    })[0];
+    if (combination === undefined) {
+      throw new Error('expected one combination');
+    }
+
+    expect(buildMatrixWindowLabel(combination, 0, null)).toBe(
+      'slot 0 testRun=1 contentMap=off knowledge=server default',
+    );
+  });
+
+  it('puts the given text in front of the generated part', () => {
+    const combination = expandCombinations({
+      testRunIds: ['2'],
+      contentMapModes: ['frozen'],
+      knowledgeModes: ['learning'],
+    })[0];
+    if (combination === undefined) {
+      throw new Error('expected one combination');
+    }
+
+    expect(buildMatrixWindowLabel(combination, 1, 'nightly-2x2')).toBe(
+      'nightly-2x2 slot 1 testRun=2 contentMap=frozen knowledge=learning',
+    );
+  });
+
+  it('treats an empty --window-label the same as none', () => {
+    const combination = expandCombinations({
+      testRunIds: ['1'],
+      contentMapModes: [null],
+      knowledgeModes: [null],
+    })[0];
+    if (combination === undefined) {
+      throw new Error('expected one combination');
+    }
+
+    expect(buildMatrixWindowLabel(combination, 3, '')).toBe(
+      'slot 3 testRun=1 contentMap=server default knowledge=server default',
+    );
+  });
+});
+
 describe('qa run axis flags', () => {
   let api: FakeQaServer;
 
@@ -186,6 +233,10 @@ describe('qa run axis flags', () => {
 describe('runQaMatrix', () => {
   let api: FakeMatrixServer;
 
+  beforeEach(() => {
+    spawnCalls = [];
+  });
+
   afterEach(async () => {
     await api.close();
   });
@@ -199,9 +250,13 @@ describe('runQaMatrix', () => {
     };
   }
 
+  /** 슬롯이 실제로 넘긴 argv. `--window-label` 이 조합마다 어떤 문구를 실었는지 여기서 본다. */
+  let spawnCalls: { command: string; args: readonly string[] }[];
+
   function makeStartDeps(): (notify: (message: string) => void) => GameStartDeps {
     let logCount = 0;
-    const spawn: GameProcessSpawner = (command) => {
+    const spawn: GameProcessSpawner = (command, args) => {
+      spawnCalls.push({ command, args: [...args] });
       api.registerLaunch(command);
       let killed = false;
       return Promise.resolve({
@@ -354,6 +409,49 @@ describe('runQaMatrix', () => {
     // 안 준 축은 키 자체가 없다.
     expect(api.createBodies.every((body) => !Object.keys(body).includes('knowledgeMode'))).toBe(
       true,
+    );
+  });
+
+  function windowLabelsOf(): (string | undefined)[] {
+    return spawnCalls.map((call) => {
+      const index = call.args.indexOf('-artel-window-label');
+      return index === -1 ? undefined : call.args[index + 1];
+    });
+  }
+
+  it('labels each launched window with its slot and axis combination when --window-label is not given', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+
+    await runQaMatrix(baseOptions(), createMemorySink(), matrixEnv(), makeStartDeps());
+
+    expect(spawnCalls).toHaveLength(4);
+    expect(new Set(windowLabelsOf())).toEqual(
+      new Set([
+        'slot 0 testRun=1 contentMap=off knowledge=server default',
+        'slot 0 testRun=2 contentMap=off knowledge=server default',
+        'slot 1 testRun=1 contentMap=frozen knowledge=server default',
+        'slot 1 testRun=2 contentMap=frozen knowledge=server default',
+      ]),
+    );
+  });
+
+  it('puts --window-label in front of the generated slot and combination text', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+
+    await runQaMatrix(
+      { ...baseOptions(), windowLabel: 'nightly-2x2' },
+      createMemorySink(),
+      matrixEnv(),
+      makeStartDeps(),
+    );
+
+    expect(new Set(windowLabelsOf())).toEqual(
+      new Set([
+        'nightly-2x2 slot 0 testRun=1 contentMap=off knowledge=server default',
+        'nightly-2x2 slot 0 testRun=2 contentMap=off knowledge=server default',
+        'nightly-2x2 slot 1 testRun=1 contentMap=frozen knowledge=server default',
+        'nightly-2x2 slot 1 testRun=2 contentMap=frozen knowledge=server default',
+      ]),
     );
   });
 

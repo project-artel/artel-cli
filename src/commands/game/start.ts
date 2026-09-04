@@ -18,6 +18,8 @@ export interface GameStartOptions {
   height: number;
   /** `--fullscreen`. 기본은 창 모드다. */
   fullscreen: boolean;
+  /** `--window-label`. 주지 않으면 `null` 로 내려가 `-artel-window-label` 을 싣지 않는다. */
+  windowLabel?: string | undefined;
   timeoutSeconds: number;
   /** `--api-url`. 있으면 `ARTEL_API_BASE_URL` 보다 이긴다. */
   apiUrl?: string | undefined;
@@ -61,6 +63,7 @@ export async function runGameStart(
       width: options.width,
       height: options.height,
       fullscreen: options.fullscreen,
+      windowLabel: options.windowLabel ?? null,
       registrationTimeoutMs: options.timeoutSeconds * 1_000,
       processEnv: env,
     },

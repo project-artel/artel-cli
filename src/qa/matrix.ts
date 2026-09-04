@@ -74,3 +74,23 @@ export function describeCombination(combination: MatrixCombination): string {
     `knowledge=${combination.knowledgeMode ?? 'server default'}`,
   ].join(' ');
 }
+
+/**
+ * 조합 하나가 띄우는 게임 창에 실을 문구(`-artel-window-label`). 조합마다 게임을 다시 띄우므로
+ * (`commands/qa/matrix.ts` 의 `runQaMatrix` 주석 중 "왜 런마다 게임을 다시 띄우나" 참고)
+ * launch 시점마다 새로 계산해 넘긴다 — 한 슬롯이 여러 조합을 차례로 도는 동안 문구가 그대로면
+ * 창은 이전 조합인 채로 남는다.
+ *
+ * `--window-label` 을 안 주면 슬롯 번호와 [describeCombination] 이 만드는 축 조합만 싣는다.
+ * `qa matrix` 의 `--label` 과는 다른 값이다 — `--label` 은 서버 `POST /api/qa-runs` 로 가는
+ * 실험 이름이고, 이것은 서버로 가지 않고 게임 창에만 뜬다. `--window-label` 을 주면 그 문구가
+ * 앞에 붙어, 매트릭스 전체에 이름을 붙이면서도 창끼리는 여전히 구분된다.
+ */
+export function buildMatrixWindowLabel(
+  combination: MatrixCombination,
+  slot: number,
+  windowLabel: string | null,
+): string {
+  const generated = `slot ${String(slot)} ${describeCombination(combination)}`;
+  return windowLabel === null || windowLabel.length === 0 ? generated : `${windowLabel} ${generated}`;
+}

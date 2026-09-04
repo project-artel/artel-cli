@@ -81,6 +81,10 @@ export async function runGameLogoutFlow(
     // 달리 이 명령에는 `--fullscreen` 이 없다.
     fullscreen: false,
     logout: true,
+    // 무엇을 위해 띄운 창인지 보여줄 실행이 아니다. `game start` 와 달리 이 명령에는
+    // `--window-label` 이 없다 — projectId 를 안 싣는 것과 같은 이유로, 지우러 가는 실행에
+    // 얹을 문구가 없다.
+    windowLabel: null,
   });
 
   deps.notify(`Launching ${options.build} briefly to clear its stored session…`);

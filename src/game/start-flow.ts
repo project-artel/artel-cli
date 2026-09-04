@@ -22,6 +22,8 @@ export interface GameStartOptions {
   height: number;
   /** 기본은 창 모드다. 이유는 `game/launch-args.ts` 의 `fullscreen` 에 적혀 있다. */
   fullscreen: boolean;
+  /** 창에 띄울 문구. `null` 이면 `-artel-window-label` 을 싣지 않는다. */
+  windowLabel: string | null;
   registrationTimeoutMs: number;
   /** 자식에 물려줄 바탕 환경 — 실제 실행에서는 `process.env` 다. `ARTEL_SDK_TOKEN` 은 이 flow 가 여기 더한다. */
   processEnv: NodeJS.ProcessEnv;
@@ -87,6 +89,7 @@ export async function runGameStartFlow(
     height: options.height,
     fullscreen: options.fullscreen,
     logout: false,
+    windowLabel: options.windowLabel,
   });
 
   deps.notify(`Launching ${options.build}…`);

@@ -70,6 +70,9 @@ describe('runGameLogoutFlow', () => {
       expect(spawner.calls[0]?.env.ARTEL_SDK_TOKEN).toBeUndefined();
       expect(spawner.calls[0]?.args).not.toContain('-artel-project');
       expect(spawner.calls[0]?.args.join(' ')).not.toContain(SDK_TOKEN);
+      // 지우러 가는 실행이다. `game start` 와 달리 `--window-label` 이 없어, 이 실행은 무엇을
+      // 위해 띄운 것인지 창에 남기지 않는다.
+      expect(spawner.calls[0]?.args).not.toContain('-artel-window-label');
     } finally {
       await api.close();
     }
