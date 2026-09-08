@@ -57,6 +57,7 @@ export function printStatus(sink: OutputSink, payload: StatusPayload): void {
     sink.out(describeCliVersion(payload.cliVersion));
     sink.out(`  credentials file  ${payload.credentialsPath} (missing)`);
     sink.out(describeEnvVar(payload.envVarState));
+    sink.out(describeApiBaseUrl(payload));
     sink.out('Run "artel auth login", or set ARTEL_TOKEN.');
     return;
   }
@@ -72,8 +73,21 @@ export function printStatus(sink: OutputSink, payload: StatusPayload): void {
     sink.out(`  token name        ${payload.tokenName ?? '-'}`);
     sink.out(`  token id          ${payload.tokenId ?? '-'}`);
     sink.out(`  expires at        ${payload.expiresAt ?? 'never'}`);
-    sink.out(`  api base url      ${payload.apiBaseUrl ?? '-'}`);
   }
+  sink.out(describeApiBaseUrl(payload));
+}
+
+/**
+ * 출처까지 적는다. 값만 적으면 환경 변수를 지웠을 때 왜 주소가 달라졌는지 이 출력으로
+ * 설명되지 않는다. `--api-url` 은 `auth status` 에 없으므로 `flag` 는 여기 나오지 않는다.
+ */
+function describeApiBaseUrl(payload: StatusPayload): string {
+  if (payload.apiBaseUrl === null) {
+    return '  api base url      not set (pass --api-url, set ARTEL_API_BASE_URL, or sign in)';
+  }
+  const origin =
+    payload.apiBaseUrlSource === 'env' ? 'ARTEL_API_BASE_URL' : 'credentials file';
+  return `  api base url      ${payload.apiBaseUrl} (from ${origin})`;
 }
 
 /**

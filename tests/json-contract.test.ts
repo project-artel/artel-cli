@@ -5,20 +5,37 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runAuthLogin } from '../src/commands/auth/login.js';
+import { runGameList } from '../src/commands/game/list.js';
 import { runDocScan } from '../src/commands/doc/scan.js';
 import { runDocUpload } from '../src/commands/doc/upload.js';
+import { runProjectList } from '../src/commands/project/list.js';
+import { runQaLabels, runQaModels } from '../src/commands/qa/catalog.js';
+import { runQaList } from '../src/commands/qa/list.js';
 import { enforcesFileMode, writeCredential } from '../src/credentials/store.js';
 import { CREDENTIAL_FILE_VERSION } from '../src/credentials/types.js';
 import type {
   ContentMapScanPayload,
   DocumentUploadPayload,
   ErrorEnvelope,
+  GameInstanceListPayload,
   LoginPayload,
   LogoutPayload,
+  ProjectListPayload,
+  QaLabelsPayload,
+  QaListPayload,
+  QaModelsPayload,
   StatusPayload,
 } from '../src/output/contract.js';
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, runCli } from '../src/run.js';
 import { startFakeDocServer, type FakeDocServer } from './doc-helpers.js';
+import {
+  fakeInstance,
+  fakeProject,
+  startFakeDiscoveryServer,
+  type FakeDiscoveryServer,
+} from './discovery-helpers.js';
+import { listedTry, startFakeListServer, type FakeListServer } from './qa-list-helpers.js';
+import { startFakeCatalogServer } from './qa-catalog-helpers.js';
 import {
   callBack,
   createMemorySink,
@@ -48,6 +65,7 @@ const LOGIN_KEYS = [
 
 const STATUS_KEYS = [
   'apiBaseUrl',
+  'apiBaseUrlSource',
   'authenticated',
   'cliVersion',
   'credentialsFileExists',
@@ -62,6 +80,44 @@ const STATUS_KEYS = [
 ];
 
 const LOGOUT_KEYS = ['credentialsPath', 'removed', 'serverSideRevoked', 'tokenId'];
+
+const PROJECT_LIST_KEYS = ['items', 'page', 'size', 'total'];
+const PROJECT_KEYS = ['description', 'genre', 'id', 'myRole', 'name', 'updatedAt'];
+const GAME_LIST_KEYS = ['items'];
+const QA_LIST_KEYS = ['fetched', 'items', 'limit', 'statusFilter'];
+const QA_MODELS_KEYS = ['items'];
+const QA_MODEL_KEYS = [
+  'id',
+  'label',
+  'multimodal',
+  'provider',
+  'reasoningEfforts',
+  'reasoningKind',
+];
+const QA_LABELS_KEYS = ['labels', 'projectId'];
+const QA_TRY_SUMMARY_KEYS = [
+  'agentArch',
+  'completedAt',
+  'gameInstanceId',
+  'id',
+  'model',
+  'promptVersion',
+  'qaRunId',
+  'reasoningEffort',
+  'startedAt',
+  'status',
+  'testScenarioId',
+];
+const GAME_INSTANCE_KEYS = [
+  'connected',
+  'createdAt',
+  'id',
+  'lastConnectedAt',
+  'name',
+  'platform',
+  'projectId',
+  'updatedAt',
+];
 
 let temp: TempConfig;
 let api: FakeOrchestration;
@@ -126,6 +182,87 @@ describe('--json key sets', () => {
     const sink = createMemorySink();
     await runCli(['auth', 'logout', '--json'], sink, { ARTEL_CONFIG_DIR: temp.configDir });
     expect(Object.keys(sink.lastJson<LogoutPayload>()).sort()).toEqual(LOGOUT_KEYS);
+  });
+
+  it('project list emits exactly its contracted keys', async () => {
+    const discovery: FakeDiscoveryServer = await startFakeDiscoveryServer({
+      projects: [fakeProject()],
+    });
+    try {
+      const sink = createMemorySink();
+      await runProjectList({ json: true, page: 0, limit: 100 }, sink, {
+        ARTEL_CONFIG_DIR: temp.configDir,
+        ARTEL_API_BASE_URL: discovery.baseUrl,
+        ARTEL_TOKEN: 'artel_env_token',
+      });
+
+      const payload = sink.lastJson<ProjectListPayload>();
+      expect(Object.keys(payload).sort()).toEqual(PROJECT_LIST_KEYS);
+      expect(Object.keys(payload.items[0] ?? {}).sort()).toEqual(PROJECT_KEYS);
+    } finally {
+      await discovery.close();
+    }
+  });
+
+  it('qa list emits exactly its contracted keys', async () => {
+    const listServer: FakeListServer = await startFakeListServer([listedTry()]);
+    try {
+      const sink = createMemorySink();
+      await runQaList({ json: true, project: '1', limit: 20 }, sink, {
+        ARTEL_CONFIG_DIR: temp.configDir,
+        ARTEL_API_BASE_URL: listServer.baseUrl,
+        ARTEL_TOKEN: 'artel_env_token',
+      });
+
+      const payload = sink.lastJson<QaListPayload>();
+      expect(Object.keys(payload).sort()).toEqual(QA_LIST_KEYS);
+      expect(Object.keys(payload.items[0] ?? {}).sort()).toEqual(QA_TRY_SUMMARY_KEYS);
+    } finally {
+      await listServer.close();
+    }
+  });
+
+  it('qa models and qa labels emit exactly their contracted keys', async () => {
+    const catalog = await startFakeCatalogServer();
+    try {
+      const env = {
+        ARTEL_CONFIG_DIR: temp.configDir,
+        ARTEL_API_BASE_URL: catalog.baseUrl,
+        ARTEL_TOKEN: 'artel_env_token',
+      };
+
+      const models = createMemorySink();
+      await runQaModels({ json: true }, models, env);
+      const modelsPayload = models.lastJson<QaModelsPayload>();
+      expect(Object.keys(modelsPayload).sort()).toEqual(QA_MODELS_KEYS);
+      expect(Object.keys(modelsPayload.items[0] ?? {}).sort()).toEqual(QA_MODEL_KEYS);
+
+      const labels = createMemorySink();
+      await runQaLabels({ json: true, project: '1' }, labels, env);
+      expect(Object.keys(labels.lastJson<QaLabelsPayload>()).sort()).toEqual(QA_LABELS_KEYS);
+    } finally {
+      await catalog.close();
+    }
+  });
+
+  it('game list emits exactly its contracted keys', async () => {
+    const discovery: FakeDiscoveryServer = await startFakeDiscoveryServer({
+      instances: [fakeInstance()],
+    });
+    try {
+      const sink = createMemorySink();
+      await runGameList({ json: true, project: '1' }, sink, {
+        ARTEL_CONFIG_DIR: temp.configDir,
+        ARTEL_API_BASE_URL: discovery.baseUrl,
+        ARTEL_TOKEN: 'artel_env_token',
+      });
+
+      const payload = sink.lastJson<GameInstanceListPayload>();
+      expect(Object.keys(payload).sort()).toEqual(GAME_LIST_KEYS);
+      expect(Object.keys(payload.items[0] ?? {}).sort()).toEqual(GAME_INSTANCE_KEYS);
+    } finally {
+      await discovery.close();
+    }
   });
 });
 

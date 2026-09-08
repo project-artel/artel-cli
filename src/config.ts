@@ -49,22 +49,70 @@ function assertAbsoluteHttpUrl(value: string, sourceLabel: string): void {
  * 기본값을 지어내면 staging token 을 운영에 쏘는 사고가 조용히 일어나므로,
  * 기본값이 정해질 때까지 `--api-url`/`ARTEL_API_BASE_URL` 을 필수로 둔다.
  */
+export type ApiBaseUrlSource = 'flag' | 'env' | 'file';
+
+export interface EffectiveApiBaseUrl {
+  /** 정규화만 한 값. 유효한 URL 인지는 보지 않는다. */
+  value: string | null;
+  source: ApiBaseUrlSource | null;
+}
+
+/**
+ * 환경 변수와 자격증명 파일 사이의 순서를 아는 유일한 자리. flag 층과 검증은 얹지 않는다.
+ *
+ * `auth status` 가 이것을 그대로 부른다. 보고하는 명령이 값이 이상하다는 이유로 죽으면 안 되고,
+ * 그 값이 실제로 쓰이는 자리에서 `invalid_base_url` 로 걸린다.
+ *
+ * `storedApiBaseUrl` 은 부르는 쪽이 이미 읽은 자격증명 파일의 값이다. 이 module 이 직접 읽지
+ * 않는 이유는 의존 방향이다 — `commands` 가 `credentials` 와 `config` 를 둘 다 부르고 그 반대
+ * 간선은 없다. 여기서 파일을 읽으면 그 방향이 깨진다.
+ *
+ * `ARTEL_TOKEN` 으로 인증한 경우 부르는 쪽이 `null` 을 넘긴다. 환경 변수로 들어온 token 에는
+ * 짝지어진 주소가 없고, 남의 파일에 적힌 주소를 그 token 에 붙이면 CI 가 자기가 어디에 붙는지
+ * 모르게 된다.
+ */
+export function effectiveApiBaseUrl(
+  env: NodeJS.ProcessEnv = process.env,
+  storedApiBaseUrl?: string | null,
+): EffectiveApiBaseUrl {
+  const envValue = env.ARTEL_API_BASE_URL?.trim();
+  if (envValue) {
+    return { value: normalizeBaseUrl(envValue), source: 'env' };
+  }
+
+  const storedValue = storedApiBaseUrl?.trim();
+  if (storedValue) {
+    return { value: normalizeBaseUrl(storedValue), source: 'file' };
+  }
+
+  return { value: null, source: null };
+}
+
+const SOURCE_LABELS: Record<ApiBaseUrlSource, string> = {
+  flag: '--api-url',
+  env: 'ARTEL_API_BASE_URL',
+  file: 'the apiBaseUrl in the credentials file',
+};
+
 export function resolveApiBaseUrl(
   env: NodeJS.ProcessEnv = process.env,
   override?: string,
+  storedApiBaseUrl?: string | null,
 ): string {
   const flagValue = override?.trim();
-  const envValue = env.ARTEL_API_BASE_URL?.trim();
-  const configured = flagValue || envValue;
-  if (!configured) {
+  const resolved: EffectiveApiBaseUrl = flagValue
+    ? { value: normalizeBaseUrl(flagValue), source: 'flag' }
+    : effectiveApiBaseUrl(env, storedApiBaseUrl);
+
+  if (resolved.value === null || resolved.source === null) {
     throw new CliError(
       'missing_api_base_url',
-      'The orchestration API host is not set. The orchestration API host has no default yet, so pass --api-url or set ARTEL_API_BASE_URL explicitly (for example --api-url http://localhost:8080).',
+      'The orchestration API host is not set. The orchestration API host has no default yet, so pass --api-url, set ARTEL_API_BASE_URL, or run "artel auth login --api-url <url>" once — the address that login used is stored with the credential and becomes the default for later commands.',
     );
   }
-  const sourceLabel = flagValue ? '--api-url' : 'ARTEL_API_BASE_URL';
-  assertAbsoluteHttpUrl(configured, sourceLabel);
-  return normalizeBaseUrl(configured);
+
+  assertAbsoluteHttpUrl(resolved.value, SOURCE_LABELS[resolved.source]);
+  return resolved.value;
 }
 
 /** `http://localhost:8080` 처럼 이 기계를 가리키는 주소인가. */
@@ -119,8 +167,9 @@ export function resolveConsoleBaseUrl(
 export function resolveConfig(
   env: NodeJS.ProcessEnv = process.env,
   overrides: ConfigOverrides = {},
+  storedApiBaseUrl?: string | null,
 ): CliConfig {
-  const apiBaseUrl = resolveApiBaseUrl(env, overrides.apiBaseUrl);
+  const apiBaseUrl = resolveApiBaseUrl(env, overrides.apiBaseUrl, storedApiBaseUrl);
   return {
     apiBaseUrl,
     consoleBaseUrl: resolveConsoleBaseUrl(env, apiBaseUrl, overrides.consoleBaseUrl),

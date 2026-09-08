@@ -1,3 +1,4 @@
+import { effectiveApiBaseUrl } from '../../config.js';
 import { reportOf, resolveCredential } from '../../credentials/resolve.js';
 import type { StatusPayload } from '../../output/contract.js';
 import { writeJsonPayload, type OutputSink } from '../../output/envelope.js';
@@ -19,6 +20,9 @@ export async function runAuthStatus(
 ): Promise<void> {
   const resolution = await resolveCredential(env);
   const report = reportOf(resolution);
+  // 검증하지 않는 `effectiveApiBaseUrl` 을 부른다. 보고하는 명령이 값이 이상하다는 이유로
+  // 죽으면 안 되고, 그 값이 실제로 쓰이는 자리에서 `invalid_base_url` 로 걸린다.
+  const effective = effectiveApiBaseUrl(env, report.apiBaseUrl);
 
   const payload: StatusPayload = {
     cliVersion: readCliVersion(),
@@ -32,7 +36,8 @@ export async function runAuthStatus(
     tokenId: report.tokenId,
     tokenName: report.tokenName,
     expiresAt: report.expiresAt,
-    apiBaseUrl: report.apiBaseUrl,
+    apiBaseUrl: effective.value,
+    apiBaseUrlSource: effective.source,
   };
 
   if (options.json) {

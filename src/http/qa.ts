@@ -14,7 +14,15 @@ import {
 
 export const QA_RUNS_PATH = '/api/qa-runs';
 export const QA_TRIES_PATH = '/api/qa-tries';
+
+/**
+ * `QaTryController.list` 가 `size !in 1..100` 이면 400 이다. CLI 가 이 값을 알고 있어야
+ * 서버 왕복 없이 거절할 수 있다.
+ */
+export const MAX_QA_TRY_LIST_SIZE = 100;
+export const DEFAULT_QA_TRY_LIST_SIZE = 20;
 export const QA_STATS_PATH = '/api/qa-stats';
+export const QA_MODELS_PATH = '/api/qa-models';
 
 /**
  * `QaTryResponse`(orchestration `qa/dto/QaDtos.kt`)에서 CLI 가 쓰는 필드만.
@@ -37,6 +45,13 @@ export interface QaTry {
   reasoningEffort: string | null;
   agentArch: string | null;
   agentFingerprint: string | null;
+  /**
+   * 이 try 가 속한 `qa_run`. `qa_run` 이 생기기 전의 단독 실행 try 는 `null` 이다.
+   *
+   * `qa show`·`qa watch`·`qa cancel` 이 받는 것은 run id 이므로, try 목록에서 본 것을 다시
+   * 열려면 이 값이 있어야 한다.
+   */
+  qaRunId: string | null;
 }
 
 /** `QaRunResponse`. `tries` 는 시나리오 순서대로이고 실행 전부터 전부 들어 있다(PENDING). */
@@ -256,6 +271,135 @@ export async function cancelQaRun(
  * 전체 로그를 훑지 않는다: 서버의 stream 은 종단 frame 에서 멈추므로 그 뒤로 붙는 frame 이
  * 없고, 판정을 읽는 데 필요한 것은 그 한 장뿐이다.
  */
+/**
+ * 한 프로젝트의 최근 시도. 새것부터 온다.
+ *
+ * 서버가 받는 것은 `projectId` 와 `size` 둘뿐이다 (`QaTryController.list`). `label` 이나
+ * `status` 로 거르는 query parameter 는 없고, `label` 은 `QaTryResponse` 에 실리지도 않는다 —
+ * 그 값은 `qa_run` 에 붙는다. 그래서 CLI 는 받은 것 안에서만 거를 수 있다.
+ *
+ * `size` 는 서버가 1 에서 100 사이로 강제한다. 벗어나면 400 이므로 부르는 쪽이 미리 막는다.
+ */
+export async function listQaTries(
+  apiBaseUrl: string,
+  cliToken: string,
+  projectId: string,
+  size: number,
+  fetchImpl?: FetchLike,
+): Promise<QaTry[]> {
+  const query = new URLSearchParams({ projectId, size: String(size) });
+  const endpoint = `${apiBaseUrl}${QA_TRIES_PATH}?${query.toString()}`;
+  const body = await requestJson({
+    method: 'GET',
+    endpoint,
+    cliToken,
+    ...(fetchImpl === undefined ? {} : { fetchImpl }),
+  });
+  return asArray(body, 'body', endpoint).map((item, index) =>
+    parseQaTry(item, `[${String(index)}]`, endpoint),
+  );
+}
+
+/** `QaReasoningCapability`. `efforts` 가 `--reasoning-effort` 에 넣을 수 있는 값이다. */
+export interface QaModelReasoning {
+  kind: string;
+  efforts: string[] | null;
+  minTokens: number | null;
+  maxTokens: number | null;
+}
+
+/** `QaModelResponse` 에서 축 값을 고르는 데 쓰는 부분. */
+export interface QaModel {
+  id: string;
+  label: string;
+  provider: string;
+  multimodal: boolean;
+  reasoning: QaModelReasoning | null;
+}
+
+/**
+ * 서버가 아는 model 목록. `--model` 에 넣을 수 있는 값이 이것이다.
+ *
+ * CLI 는 이 목록으로 `--model` 을 미리 검증하지 않는다. 런을 걸 때마다 목록을 받아 오면 서버
+ * 왕복이 하나 늘고, 서버가 아는 목록은 CLI 배포보다 자주 바뀐다 — CLI 가 든 사본이 서버보다
+ * 낡으면 실제로 되는 model 을 CLI 가 거절하게 된다.
+ */
+export async function listQaModels(
+  apiBaseUrl: string,
+  cliToken: string,
+  fetchImpl?: FetchLike,
+): Promise<QaModel[]> {
+  const endpoint = `${apiBaseUrl}${QA_MODELS_PATH}`;
+  const body = await requestJson({
+    method: 'GET',
+    endpoint,
+    cliToken,
+    ...(fetchImpl === undefined ? {} : { fetchImpl }),
+  });
+  return asArray(body, 'body', endpoint).map((item, index) =>
+    parseQaModel(item, `[${String(index)}]`, endpoint),
+  );
+}
+
+function parseQaModel(value: unknown, field: string, endpoint: string): QaModel {
+  const model = asObject(value, field, endpoint);
+  return {
+    id: asString(model['id'], `${field}.id`, endpoint),
+    label: asString(model['label'], `${field}.label`, endpoint),
+    provider: asString(model['provider'], `${field}.provider`, endpoint),
+    multimodal: model['multimodal'] === true,
+    reasoning: parseQaModelReasoning(model['reasoning']),
+  };
+}
+
+/**
+ * 능력 서술이라 모양이 어긋나면 오류가 아니라 미상(null)이다. 이 값을 못 읽었다고 목록 전체를
+ * 실패로 돌리면, model 이름을 확인하러 온 사람이 이름조차 못 본다.
+ */
+function parseQaModelReasoning(value: unknown): QaModelReasoning | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const reasoning = value as Record<string, unknown>;
+  const kind = reasoning['kind'];
+  if (typeof kind !== 'string' || kind.length === 0) {
+    return null;
+  }
+  const efforts = reasoning['efforts'];
+  return {
+    kind,
+    efforts: Array.isArray(efforts)
+      ? efforts.filter((effort): effort is string => typeof effort === 'string')
+      : null,
+    minTokens: typeof reasoning['minTokens'] === 'number' ? reasoning['minTokens'] : null,
+    maxTokens: typeof reasoning['maxTokens'] === 'number' ? reasoning['maxTokens'] : null,
+  };
+}
+
+/**
+ * 이 사용자에게 실제로 런이 있는 label 만 온다. `projectId` 를 생략하면 볼 수 있는 전
+ * 프로젝트의 목록이고, 그것은 `qa diff` 가 프로젝트 없이도 집계하는 것과 같은 규칙이다.
+ */
+export async function listQaLabels(
+  apiBaseUrl: string,
+  cliToken: string,
+  projectId: string | undefined,
+  fetchImpl?: FetchLike,
+): Promise<string[]> {
+  const query = projectId === undefined ? '' : `?projectId=${encodeURIComponent(projectId)}`;
+  const endpoint = `${apiBaseUrl}${QA_STATS_PATH}/labels${query}`;
+  const body = await requestJson({
+    method: 'GET',
+    endpoint,
+    cliToken,
+    ...(fetchImpl === undefined ? {} : { fetchImpl }),
+  });
+  const envelope = asObject(body, 'body', endpoint);
+  return asArray(envelope['labels'], 'labels', endpoint).map((item, index) =>
+    asString(item, `labels[${String(index)}]`, endpoint),
+  );
+}
+
 export async function getQaTryLogTail(
   apiBaseUrl: string,
   cliToken: string,
@@ -440,6 +584,7 @@ function parseQaTry(value: unknown, field: string, endpoint: string): QaTry {
       `${field}.agentFingerprint`,
       endpoint,
     ),
+    qaRunId: asNullableString(qaTry['qaRunId'], `${field}.qaRunId`, endpoint),
   };
 }
 

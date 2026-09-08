@@ -12,10 +12,14 @@ import { runCaseShow } from './commands/case/show.js';
 import { runCaseUpdate } from './commands/case/update.js';
 import { runDocScan } from './commands/doc/scan.js';
 import { runDocUpload } from './commands/doc/upload.js';
+import { runGameList } from './commands/game/list.js';
 import { runGameLogout } from './commands/game/logout.js';
 import { runGameStart } from './commands/game/start.js';
+import { runProjectList } from './commands/project/list.js';
 import { runQaCancel } from './commands/qa/cancel.js';
 import { runQaDiff } from './commands/qa/diff.js';
+import { runQaLabels, runQaModels } from './commands/qa/catalog.js';
+import { runQaList } from './commands/qa/list.js';
 import { runQaMatrix } from './commands/qa/matrix.js';
 import { runQaRun } from './commands/qa/run.js';
 import { runQaShow } from './commands/qa/show.js';
@@ -25,6 +29,8 @@ import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from './exit.js';
 import { DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH } from './game/launch-args.js';
 import { DEFAULT_LOGOUT_TIMEOUT_MS } from './game/logout-flow.js';
 import { DEFAULT_REGISTRATION_TIMEOUT_MS } from './game/start-flow.js';
+import { MAX_PROJECT_PAGE_SIZE } from './http/projects.js';
+import { DEFAULT_QA_TRY_LIST_SIZE, MAX_QA_TRY_LIST_SIZE } from './http/qa.js';
 import { processSink, writeErrorEnvelope, type OutputSink } from './output/envelope.js';
 import { cliVersionForDisplay } from './version.js';
 import {
@@ -108,6 +114,14 @@ export function parsePositiveInt(value: string, flagLabel: string): number {
     throw new UsageError(`${flagLabel} must be at least 1.`);
   }
   return parsed;
+}
+
+/** `--page` 는 0 부터 센다. 서버의 `page` 파라미터가 0-based 라 CLI 가 그것을 바꾸지 않는다. */
+function parsePageNumber(value: string): number {
+  if (!/^[0-9]+$/.test(value)) {
+    throw new UsageError(`--page takes a whole number starting at 0, not "${value}".`);
+  }
+  return Number.parseInt(value, 10);
 }
 
 /** `--slot` 은 되풀이해 적는다. commander 는 값을 모으는 방법을 스스로 정하지 않는다. */
@@ -220,7 +234,66 @@ export async function runCli(
       await runAuthLogout(options, sink, env);
     });
 
+  program
+    .command('project')
+    .description('List the projects this credential can see')
+    .command('list')
+    .description(
+      'List the projects this credential can see, so --project has somewhere to come from',
+    )
+    .option('--page <n>', 'zero-based page to read', '0')
+    .option(
+      '--limit <n>',
+      `projects per page; the server caps this at ${String(MAX_PROJECT_PAGE_SIZE)}`,
+      String(MAX_PROJECT_PAGE_SIZE),
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (options: {
+        page: string;
+        limit: string;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        const limit = parsePositiveInt(options.limit, '--limit');
+        if (limit > MAX_PROJECT_PAGE_SIZE) {
+          throw new UsageError(
+            `--limit is ${String(limit)}, but the server caps a page at ${String(MAX_PROJECT_PAGE_SIZE)}. Read the rest with --page.`,
+          );
+        }
+        await runProjectList(
+          {
+            json: options.json,
+            page: parsePageNumber(options.page),
+            limit,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
   const game = program.command('game').description('Launch a game build that is already signed in');
+
+  game
+    .command('list')
+    .description(
+      'List a project\'s game instances, so --instance has somewhere to come from besides the line "game start" printed',
+    )
+    .requiredOption('--project <id>', 'project whose game instances to list')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(async (options: { project: string; json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runGameList(
+        { json: options.json, project: options.project, apiUrl: options.apiUrl },
+        sink,
+        env,
+      );
+    });
 
   game
     .command('start')
@@ -327,9 +400,12 @@ export async function runCli(
     )
     .requiredOption('--test-run <id>', 'test run whose scenarios the agent executes')
     .requiredOption('--instance <id>', 'game instance the agent drives')
-    .option('--model <id>', 'pin the model this run uses')
+    .option('--model <id>', 'pin the model this run uses; "artel qa models" lists the ids')
     .option('--prompt-version <version>', 'pin the prompt version this run uses')
-    .option('--reasoning-effort <effort>', 'pin the reasoning effort this run uses')
+    .option(
+      '--reasoning-effort <effort>',
+      'pin the reasoning effort this run uses; the values depend on the model and "artel qa models" lists them',
+    )
     .option('--reasoning-max-tokens <n>', 'pin the reasoning token budget this run uses')
     .option(
       '--arch <json>',
@@ -491,6 +567,82 @@ export async function runCli(
             timeoutSeconds: parseTimeoutSeconds(options.timeout),
             apiUrl: options.apiUrl,
             consoleUrl: options.consoleUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  qa.command('models')
+    .description('List the models the server accepts for --model, with the efforts each one takes')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(async (options: { json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runQaModels({ json: options.json, apiUrl: options.apiUrl }, sink, env);
+    });
+
+  qa.command('labels')
+    .description('List the experiment labels QA runs have carried, for "qa diff" and --label')
+    .option(
+      '--project <id>',
+      'project whose labels to list; omit for every project you can see, the way the server aggregates',
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(
+      async (options: { project?: string | undefined; json: boolean; apiUrl?: string | undefined }) => {
+        json = options.json;
+        await runQaLabels(
+          { json: options.json, project: options.project, apiUrl: options.apiUrl },
+          sink,
+          env,
+        );
+      },
+    );
+
+  qa.command('list')
+    .description(
+      "List a project's recent QA tries, newest first, with the run id each one belongs to",
+    )
+    .requiredOption('--project <id>', 'project whose QA tries to list')
+    .option(
+      '--limit <n>',
+      `tries to fetch; the server takes 1 to ${String(MAX_QA_TRY_LIST_SIZE)}`,
+      String(DEFAULT_QA_TRY_LIST_SIZE),
+    )
+    .option(
+      '--status <status>',
+      'keep only tries in this status. The server has no status filter, so this narrows the tries --limit fetched rather than the whole project',
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(
+      async (options: {
+        project: string;
+        limit: string;
+        status?: string | undefined;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        const limit = parsePositiveInt(options.limit, '--limit');
+        if (limit > MAX_QA_TRY_LIST_SIZE) {
+          throw new UsageError(
+            `--limit is ${String(limit)}, but the server takes at most ${String(MAX_QA_TRY_LIST_SIZE)}.`,
+          );
+        }
+        await runQaList(
+          {
+            json: options.json,
+            project: options.project,
+            limit,
+            status: options.status,
+            apiUrl: options.apiUrl,
           },
           sink,
           env,
