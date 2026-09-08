@@ -324,6 +324,29 @@ export interface TestCaseDetailPayload extends TestCasePayload {
  * 때문이다. `items.length` 만 내면 그것이 프로젝트 전체에서 나온 수인지 최근 몇 개에서 나온
  * 수인지 읽는 쪽이 알 수 없다.
  */
+/** `qa models --json`. */
+export interface QaModelsPayload {
+  items: QaModelPayload[];
+}
+
+export interface QaModelPayload {
+  /** `--model` 에 그대로 넣는 값. */
+  id: string;
+  label: string;
+  provider: string;
+  multimodal: boolean;
+  /** 능력 서술을 읽지 못했으면 `null` 이다. 그것은 reasoning 이 없다는 뜻과 다르다. */
+  reasoningKind: string | null;
+  /** `--reasoning-effort` 에 넣을 수 있는 값. model 마다 다르다. */
+  reasoningEfforts: string[] | null;
+}
+
+/** `qa labels --json`. `projectId` 가 `null` 이면 볼 수 있는 전 프로젝트의 목록이다. */
+export interface QaLabelsPayload {
+  labels: string[];
+  projectId: string | null;
+}
+
 export interface QaListPayload {
   items: QaTrySummaryPayload[];
   /** 서버에서 받은 개수. `--status` 를 걸기 전의 수다. */

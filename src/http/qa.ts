@@ -22,6 +22,7 @@ export const QA_TRIES_PATH = '/api/qa-tries';
 export const MAX_QA_TRY_LIST_SIZE = 100;
 export const DEFAULT_QA_TRY_LIST_SIZE = 20;
 export const QA_STATS_PATH = '/api/qa-stats';
+export const QA_MODELS_PATH = '/api/qa-models';
 
 /**
  * `QaTryResponse`(orchestration `qa/dto/QaDtos.kt`)에서 CLI 가 쓰는 필드만.
@@ -296,6 +297,106 @@ export async function listQaTries(
   });
   return asArray(body, 'body', endpoint).map((item, index) =>
     parseQaTry(item, `[${String(index)}]`, endpoint),
+  );
+}
+
+/** `QaReasoningCapability`. `efforts` 가 `--reasoning-effort` 에 넣을 수 있는 값이다. */
+export interface QaModelReasoning {
+  kind: string;
+  efforts: string[] | null;
+  minTokens: number | null;
+  maxTokens: number | null;
+}
+
+/** `QaModelResponse` 에서 축 값을 고르는 데 쓰는 부분. */
+export interface QaModel {
+  id: string;
+  label: string;
+  provider: string;
+  multimodal: boolean;
+  reasoning: QaModelReasoning | null;
+}
+
+/**
+ * 서버가 아는 model 목록. `--model` 에 넣을 수 있는 값이 이것이다.
+ *
+ * CLI 는 이 목록으로 `--model` 을 미리 검증하지 않는다. 런을 걸 때마다 목록을 받아 오면 서버
+ * 왕복이 하나 늘고, 서버가 아는 목록은 CLI 배포보다 자주 바뀐다 — CLI 가 든 사본이 서버보다
+ * 낡으면 실제로 되는 model 을 CLI 가 거절하게 된다.
+ */
+export async function listQaModels(
+  apiBaseUrl: string,
+  cliToken: string,
+  fetchImpl?: FetchLike,
+): Promise<QaModel[]> {
+  const endpoint = `${apiBaseUrl}${QA_MODELS_PATH}`;
+  const body = await requestJson({
+    method: 'GET',
+    endpoint,
+    cliToken,
+    ...(fetchImpl === undefined ? {} : { fetchImpl }),
+  });
+  return asArray(body, 'body', endpoint).map((item, index) =>
+    parseQaModel(item, `[${String(index)}]`, endpoint),
+  );
+}
+
+function parseQaModel(value: unknown, field: string, endpoint: string): QaModel {
+  const model = asObject(value, field, endpoint);
+  return {
+    id: asString(model['id'], `${field}.id`, endpoint),
+    label: asString(model['label'], `${field}.label`, endpoint),
+    provider: asString(model['provider'], `${field}.provider`, endpoint),
+    multimodal: model['multimodal'] === true,
+    reasoning: parseQaModelReasoning(model['reasoning']),
+  };
+}
+
+/**
+ * 능력 서술이라 모양이 어긋나면 오류가 아니라 미상(null)이다. 이 값을 못 읽었다고 목록 전체를
+ * 실패로 돌리면, model 이름을 확인하러 온 사람이 이름조차 못 본다.
+ */
+function parseQaModelReasoning(value: unknown): QaModelReasoning | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const reasoning = value as Record<string, unknown>;
+  const kind = reasoning['kind'];
+  if (typeof kind !== 'string' || kind.length === 0) {
+    return null;
+  }
+  const efforts = reasoning['efforts'];
+  return {
+    kind,
+    efforts: Array.isArray(efforts)
+      ? efforts.filter((effort): effort is string => typeof effort === 'string')
+      : null,
+    minTokens: typeof reasoning['minTokens'] === 'number' ? reasoning['minTokens'] : null,
+    maxTokens: typeof reasoning['maxTokens'] === 'number' ? reasoning['maxTokens'] : null,
+  };
+}
+
+/**
+ * 이 사용자에게 실제로 런이 있는 label 만 온다. `projectId` 를 생략하면 볼 수 있는 전
+ * 프로젝트의 목록이고, 그것은 `qa diff` 가 프로젝트 없이도 집계하는 것과 같은 규칙이다.
+ */
+export async function listQaLabels(
+  apiBaseUrl: string,
+  cliToken: string,
+  projectId: string | undefined,
+  fetchImpl?: FetchLike,
+): Promise<string[]> {
+  const query = projectId === undefined ? '' : `?projectId=${encodeURIComponent(projectId)}`;
+  const endpoint = `${apiBaseUrl}${QA_STATS_PATH}/labels${query}`;
+  const body = await requestJson({
+    method: 'GET',
+    endpoint,
+    cliToken,
+    ...(fetchImpl === undefined ? {} : { fetchImpl }),
+  });
+  const envelope = asObject(body, 'body', endpoint);
+  return asArray(envelope['labels'], 'labels', endpoint).map((item, index) =>
+    asString(item, `labels[${String(index)}]`, endpoint),
   );
 }
 

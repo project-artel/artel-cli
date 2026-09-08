@@ -9,6 +9,7 @@ import { runGameList } from '../src/commands/game/list.js';
 import { runDocScan } from '../src/commands/doc/scan.js';
 import { runDocUpload } from '../src/commands/doc/upload.js';
 import { runProjectList } from '../src/commands/project/list.js';
+import { runQaLabels, runQaModels } from '../src/commands/qa/catalog.js';
 import { runQaList } from '../src/commands/qa/list.js';
 import { enforcesFileMode, writeCredential } from '../src/credentials/store.js';
 import { CREDENTIAL_FILE_VERSION } from '../src/credentials/types.js';
@@ -20,7 +21,9 @@ import type {
   LoginPayload,
   LogoutPayload,
   ProjectListPayload,
+  QaLabelsPayload,
   QaListPayload,
+  QaModelsPayload,
   StatusPayload,
 } from '../src/output/contract.js';
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, runCli } from '../src/run.js';
@@ -32,6 +35,7 @@ import {
   type FakeDiscoveryServer,
 } from './discovery-helpers.js';
 import { listedTry, startFakeListServer, type FakeListServer } from './qa-list-helpers.js';
+import { startFakeCatalogServer } from './qa-catalog-helpers.js';
 import {
   callBack,
   createMemorySink,
@@ -81,6 +85,16 @@ const PROJECT_LIST_KEYS = ['items', 'page', 'size', 'total'];
 const PROJECT_KEYS = ['description', 'genre', 'id', 'myRole', 'name', 'updatedAt'];
 const GAME_LIST_KEYS = ['items'];
 const QA_LIST_KEYS = ['fetched', 'items', 'limit', 'statusFilter'];
+const QA_MODELS_KEYS = ['items'];
+const QA_MODEL_KEYS = [
+  'id',
+  'label',
+  'multimodal',
+  'provider',
+  'reasoningEfforts',
+  'reasoningKind',
+];
+const QA_LABELS_KEYS = ['labels', 'projectId'];
 const QA_TRY_SUMMARY_KEYS = [
   'agentArch',
   'completedAt',
@@ -205,6 +219,29 @@ describe('--json key sets', () => {
       expect(Object.keys(payload.items[0] ?? {}).sort()).toEqual(QA_TRY_SUMMARY_KEYS);
     } finally {
       await listServer.close();
+    }
+  });
+
+  it('qa models and qa labels emit exactly their contracted keys', async () => {
+    const catalog = await startFakeCatalogServer();
+    try {
+      const env = {
+        ARTEL_CONFIG_DIR: temp.configDir,
+        ARTEL_API_BASE_URL: catalog.baseUrl,
+        ARTEL_TOKEN: 'artel_env_token',
+      };
+
+      const models = createMemorySink();
+      await runQaModels({ json: true }, models, env);
+      const modelsPayload = models.lastJson<QaModelsPayload>();
+      expect(Object.keys(modelsPayload).sort()).toEqual(QA_MODELS_KEYS);
+      expect(Object.keys(modelsPayload.items[0] ?? {}).sort()).toEqual(QA_MODEL_KEYS);
+
+      const labels = createMemorySink();
+      await runQaLabels({ json: true, project: '1' }, labels, env);
+      expect(Object.keys(labels.lastJson<QaLabelsPayload>()).sort()).toEqual(QA_LABELS_KEYS);
+    } finally {
+      await catalog.close();
     }
   });
 

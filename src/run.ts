@@ -18,6 +18,7 @@ import { runGameStart } from './commands/game/start.js';
 import { runProjectList } from './commands/project/list.js';
 import { runQaCancel } from './commands/qa/cancel.js';
 import { runQaDiff } from './commands/qa/diff.js';
+import { runQaLabels, runQaModels } from './commands/qa/catalog.js';
 import { runQaList } from './commands/qa/list.js';
 import { runQaMatrix } from './commands/qa/matrix.js';
 import { runQaRun } from './commands/qa/run.js';
@@ -399,9 +400,12 @@ export async function runCli(
     )
     .requiredOption('--test-run <id>', 'test run whose scenarios the agent executes')
     .requiredOption('--instance <id>', 'game instance the agent drives')
-    .option('--model <id>', 'pin the model this run uses')
+    .option('--model <id>', 'pin the model this run uses; "artel qa models" lists the ids')
     .option('--prompt-version <version>', 'pin the prompt version this run uses')
-    .option('--reasoning-effort <effort>', 'pin the reasoning effort this run uses')
+    .option(
+      '--reasoning-effort <effort>',
+      'pin the reasoning effort this run uses; the values depend on the model and "artel qa models" lists them',
+    )
     .option('--reasoning-max-tokens <n>', 'pin the reasoning token budget this run uses')
     .option(
       '--arch <json>',
@@ -564,6 +568,36 @@ export async function runCli(
             apiUrl: options.apiUrl,
             consoleUrl: options.consoleUrl,
           },
+          sink,
+          env,
+        );
+      },
+    );
+
+  qa.command('models')
+    .description('List the models the server accepts for --model, with the efforts each one takes')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(async (options: { json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runQaModels({ json: options.json, apiUrl: options.apiUrl }, sink, env);
+    });
+
+  qa.command('labels')
+    .description('List the experiment labels QA runs have carried, for "qa diff" and --label')
+    .option(
+      '--project <id>',
+      'project whose labels to list; omit for every project you can see, the way the server aggregates',
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(
+      async (options: { project?: string | undefined; json: boolean; apiUrl?: string | undefined }) => {
+        json = options.json;
+        await runQaLabels(
+          { json: options.json, project: options.project, apiUrl: options.apiUrl },
           sink,
           env,
         );
