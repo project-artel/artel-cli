@@ -213,6 +213,10 @@ export interface QaMatrixCombinationPayload {
   /** 그 슬롯의 빌드 경로. 슬롯마다 빌드가 다르다. */
   build: string;
   testRunId: string;
+  /** 축 값 그대로. `null` 은 그 축의 flag 를 주지 않아 서버 기본값으로 돌았다는 뜻이다. */
+  model: string | null;
+  promptVersion: string | null;
+  reasoningEffort: string | null;
   contentMapMode: string | null;
   knowledgeMode: string | null;
   gameInstanceId: string | null;

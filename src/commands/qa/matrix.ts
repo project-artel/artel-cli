@@ -13,6 +13,7 @@ import { cancelQaRun, createQaRun } from '../../http/qa.js';
 import type { QaMatrixCombinationPayload, QaMatrixPayload } from '../../output/contract.js';
 import { writeJsonPayload, type OutputSink } from '../../output/envelope.js';
 import { describeFollowEvent, printQaMatrix } from '../../output/human.js';
+import { readArch } from '../../qa/arch.js';
 import type { QaContext } from '../../qa/context.js';
 import type { QaFollowEvent } from '../../qa/follow.js';
 import {
@@ -28,8 +29,22 @@ export interface QaMatrixCommandOptions {
   json: boolean;
   project: string;
   testRunIds: readonly string[];
+  models: readonly AxisValue[];
+  promptVersions: readonly AxisValue[];
+  reasoningEfforts: readonly AxisValue[];
   contentMapModes: readonly AxisValue[];
   knowledgeModes: readonly AxisValue[];
+  /**
+   * 전 조합에 걸리는 고정값. 축이 아니다.
+   *
+   * `--reasoning-max-tokens` 는 model 과 effort 가 정해진 뒤의 예산이라, 그 둘을 축으로 두고
+   * 이것까지 축으로 두면 서로 맞지 않는 조합이 곱해진다. `--arch` 는 JSON object 하나여서
+   * 쉼표로 가를 수 없다 — 목록으로 받으려면 파일 여러 개를 받는 다른 flag 모양이 필요하고,
+   * 그것은 이 이슈가 푸는 문제가 아니다.
+   */
+  reasoningMaxTokens?: number | undefined;
+  /** `--arch` 의 원문. JSON object 이거나 `@경로`. */
+  arch?: string | undefined;
   label?: string | undefined;
   /** `--slot` 을 적은 순서. 첨자가 슬롯 번호다. */
   slots: readonly string[];
@@ -101,26 +116,37 @@ export async function runQaMatrix(
 
   const combinations = expandCombinations({
     testRunIds: options.testRunIds,
+    models: options.models,
+    promptVersions: options.promptVersions,
+    reasoningEfforts: options.reasoningEfforts,
     contentMapModes: options.contentMapModes,
     knowledgeModes: options.knowledgeModes,
   });
   const slots = assignToSlots(combinations, options.slots.length);
   const total = combinations.length;
 
+  // 슬롯당 대기열 길이까지 말한다. 축이 다섯이 되면서 조합 수가 곱으로 늘어나고, 슬롯 하나가
+  // 몇 개를 차례로 돌아야 하는지가 이 명령이 몇 시간짜리인지를 정한다 — 시작하기 전에 그것을
+  // 보고 그만둘 수 있어야 한다.
+  const longestQueue = Math.max(...slots.map((assigned) => assigned.length));
   sink.err(
-    `Running ${String(combinations.length)} combinations over ${String(options.slots.length)} slots.`,
+    `Running ${String(total)} combinations over ${String(options.slots.length)} slots — up to ${String(longestQueue)} in a row on one slot.`,
   );
 
   // 전개 순서대로 자리를 미리 잡아 둔다. 슬롯이 병렬로 끝나므로, 끝난 순서대로 밀어 넣으면
   // 같은 명령이 매번 다른 순서의 payload 를 낸다.
   const results = new Array<QaMatrixCombinationPayload | null>(combinations.length).fill(null);
   const launchGate = createLaunchGate();
+  // 한 번만 읽는다. 조합마다 다시 읽으면 matrix 가 도는 중에 파일이 바뀌었을 때 앞뒤 조합이
+  // 다른 구조로 돌고, 그 차이는 결과 어디에도 남지 않는다.
+  const arch = await readArch(options.arch);
 
   await Promise.all(
     slots.map((assigned, slot) =>
       runSlot(assigned, slot, total, options, context, config.consoleBaseUrl, env, sink, results, {
         makeStartDeps,
         launchGate,
+        ...(arch === undefined ? {} : { arch }),
         ...(fetchImpl === undefined ? {} : { fetchImpl }),
       }),
     ),
@@ -152,6 +178,11 @@ export async function runQaMatrix(
 interface SlotDeps {
   makeStartDeps: (notify: (message: string) => void) => GameStartDeps;
   fetchImpl?: FetchLike | undefined;
+  /**
+   * `--arch` 를 읽어 둔 값. 조합마다 다시 읽지 않는다 — 파일을 매번 읽으면 matrix 가 도는
+   * 중에 그 파일이 바뀌었을 때 앞뒤 조합이 다른 구조로 돌고, 그 차이는 결과 어디에도 안 남는다.
+   */
+  arch?: unknown;
   /** 등록을 한 번에 하나씩만 시키는 문. [createLaunchGate] 참고. */
   launchGate: LaunchGate;
 }
@@ -238,6 +269,9 @@ async function runCombination(
     slot,
     build,
     testRunId: combination.testRunId,
+    model: combination.model,
+    promptVersion: combination.promptVersion,
+    reasoningEffort: combination.reasoningEffort,
     contentMapMode: combination.contentMapMode,
     knowledgeMode: combination.knowledgeMode,
   };
@@ -277,6 +311,21 @@ async function runCombination(
         testRunId: combination.testRunId,
         gameInstanceId: started.instance.id,
         // 안 준 축은 키 자체를 싣지 않는다. 빈 문자열은 서버가 값으로 읽어 400 이 된다.
+        ...(combination.model === null ? {} : { model: combination.model }),
+        ...(combination.promptVersion === null ? {} : { promptVersion: combination.promptVersion }),
+        ...(combination.reasoningEffort === null && options.reasoningMaxTokens === undefined
+          ? {}
+          : {
+              reasoning: {
+                ...(combination.reasoningEffort === null
+                  ? {}
+                  : { effort: combination.reasoningEffort }),
+                ...(options.reasoningMaxTokens === undefined
+                  ? {}
+                  : { maxTokens: options.reasoningMaxTokens }),
+              },
+            }),
+        ...(deps.arch === undefined ? {} : { arch: deps.arch }),
         ...(combination.contentMapMode === null
           ? {}
           : { contentMapMode: combination.contentMapMode }),

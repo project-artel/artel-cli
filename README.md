@@ -192,6 +192,7 @@ every combination, spread over several game builds:
 artel qa matrix \
   --project 1 \
   --test-run 1,2 \
+  --model openai/gpt-5.6-luna \
   --content-map-mode off,frozen \
   --knowledge-mode off \
   --label 2x2-local-pilot \
@@ -199,10 +200,26 @@ artel qa matrix \
   --slot /path/to/BuildB/WordVenture.exe
 ```
 
-That is 2 test runs × 2 content map modes × 1 knowledge mode = 4 runs, spread
-over 2 slots. The product is expanded in the order the flags name the axes, and
+That is 2 test runs × 1 model × 2 content map modes × 1 knowledge mode = 4 runs,
+spread over 2 slots. The product is expanded in a fixed order — test run, model,
+prompt version, reasoning effort, content map mode, knowledge mode — and
 combination *i* goes to slot *i mod slots*, so running the same command twice
-sends the same combination to the same slot. A work-stealing queue would finish
+sends the same combination to the same slot.
+
+**An axis given one value is pinned, not multiplied.** `--model` above does not
+add combinations; it makes every run use that model. That is the reason to pass
+it even when you are not comparing models: leave it out and the server picks per
+run, so a default that changes while the matrix is running puts two models in one
+table and nothing in the output says so.
+
+`--model`, `--prompt-version` and `--reasoning-effort` are the same axes
+`artel qa diff` selects on, so a matrix can now produce the runs that diff
+compares. `artel qa models` lists the ids and the efforts each model takes.
+
+`--reasoning-max-tokens` and `--arch` are fixed values for the whole matrix
+rather than axes. The token budget only means something under a chosen model and
+effort, so multiplying it against those two produces combinations that do not go
+together; `--arch` is one JSON object and cannot be split on commas. A work-stealing queue would finish
 sooner but would decide that by timing, and which build a run happened on is part
 of the measurement.
 

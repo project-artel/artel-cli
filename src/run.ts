@@ -501,6 +501,26 @@ export async function runCli(
       [],
     )
     .option(
+      '--model <ids>',
+      'comma-separated models, one axis of the product; one value pins the model across every combination. "artel qa models" lists the ids. Omit and the server picks per run — which means a default that changes mid-matrix puts two models in one table',
+    )
+    .option(
+      '--prompt-version <versions>',
+      'comma-separated prompt versions, one axis of the product; one value pins it across every combination',
+    )
+    .option(
+      '--reasoning-effort <efforts>',
+      'comma-separated reasoning efforts, one axis of the product; the values depend on the model and "artel qa models" lists them',
+    )
+    .option(
+      '--reasoning-max-tokens <n>',
+      'reasoning token budget for every combination. Not an axis: it is the budget under a model and an effort, so multiplying it against those two produces combinations that do not go together',
+    )
+    .option(
+      '--arch <json>',
+      "the agent's structure for every combination: a JSON object, or @path naming a file that holds one. Not an axis: one JSON object cannot be split on commas",
+    )
+    .option(
       '--content-map-mode <modes>',
       `comma-separated content map modes, one axis of the product: ${CONTENT_MAP_MODES.join(' | ')}; omit to let the server choose`,
     )
@@ -532,6 +552,11 @@ export async function runCli(
         project: string;
         testRun: string;
         slot: string[];
+        model?: string | undefined;
+        promptVersion?: string | undefined;
+        reasoningEffort?: string | undefined;
+        reasoningMaxTokens?: string | undefined;
+        arch?: string | undefined;
         contentMapMode?: string | undefined;
         knowledgeMode?: string | undefined;
         label?: string | undefined;
@@ -551,6 +576,29 @@ export async function runCli(
             testRunIds: parseAxisList(options.testRun, '--test-run'),
             // 축 flag 를 안 주면 그 축은 값 하나짜리이고 그 값은 "안 준 것"(null)이다.
             // 조합은 그대로 하나 생기고, body 에는 그 키가 실리지 않아 서버 기본값으로 돈다.
+            //
+            // 이 셋은 값 목록을 CLI 가 모른다. `--content-map-mode` 처럼 미리 거절하지 못하고
+            // 서버가 아는 목록은 `artel qa models` 로 본다.
+            models:
+              options.model === undefined ? [null] : parseAxisList(options.model, '--model'),
+            promptVersions:
+              options.promptVersion === undefined
+                ? [null]
+                : parseAxisList(options.promptVersion, '--prompt-version'),
+            reasoningEfforts:
+              options.reasoningEffort === undefined
+                ? [null]
+                : parseAxisList(options.reasoningEffort, '--reasoning-effort'),
+            // 축이 아니라 전 조합에 걸리는 고정값이다. 이유는 `--help` 에 적혀 있다.
+            ...(options.reasoningMaxTokens === undefined
+              ? {}
+              : {
+                  reasoningMaxTokens: parsePositiveInt(
+                    options.reasoningMaxTokens,
+                    '--reasoning-max-tokens',
+                  ),
+                }),
+            arch: options.arch,
             contentMapModes:
               options.contentMapMode === undefined
                 ? [null]

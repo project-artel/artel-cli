@@ -9,8 +9,17 @@
  */
 export type AxisValue = string | null;
 
+/**
+ * 축 다섯. 전개 순서가 이 선언 순서이고, 그것이 `--help` 와 README 가 적는 순서다.
+ *
+ * 순서를 고정하는 것이 요점이다 — 같은 명령을 두 번 돌리면 같은 조합이 같은 번호를 받고,
+ * 그래야 [assignToSlots] 의 배정도 두 번 다 같다.
+ */
 export interface MatrixAxes {
   testRunIds: readonly string[];
+  models: readonly AxisValue[];
+  promptVersions: readonly AxisValue[];
+  reasoningEfforts: readonly AxisValue[];
   contentMapModes: readonly AxisValue[];
   knowledgeModes: readonly AxisValue[];
 }
@@ -19,6 +28,9 @@ export interface MatrixCombination {
   /** 전개 순서. 0부터. 슬롯 배정과 결과 정렬이 모두 이 번호를 쓴다. */
   index: number;
   testRunId: string;
+  model: AxisValue;
+  promptVersion: AxisValue;
+  reasoningEffort: AxisValue;
   contentMapMode: AxisValue;
   knowledgeMode: AxisValue;
 }
@@ -33,14 +45,23 @@ export interface MatrixCombination {
 export function expandCombinations(axes: MatrixAxes): readonly MatrixCombination[] {
   const combinations: MatrixCombination[] = [];
   for (const testRunId of axes.testRunIds) {
-    for (const contentMapMode of axes.contentMapModes) {
-      for (const knowledgeMode of axes.knowledgeModes) {
-        combinations.push({
-          index: combinations.length,
-          testRunId,
-          contentMapMode,
-          knowledgeMode,
-        });
+    for (const model of axes.models) {
+      for (const promptVersion of axes.promptVersions) {
+        for (const reasoningEffort of axes.reasoningEfforts) {
+          for (const contentMapMode of axes.contentMapModes) {
+            for (const knowledgeMode of axes.knowledgeModes) {
+              combinations.push({
+                index: combinations.length,
+                testRunId,
+                model,
+                promptVersion,
+                reasoningEffort,
+                contentMapMode,
+                knowledgeMode,
+              });
+            }
+          }
+        }
       }
     }
   }
@@ -70,6 +91,9 @@ export function assignToSlots(
 export function describeCombination(combination: MatrixCombination): string {
   return [
     `testRun=${combination.testRunId}`,
+    `model=${combination.model ?? 'server default'}`,
+    `prompt=${combination.promptVersion ?? 'server default'}`,
+    `reasoning=${combination.reasoningEffort ?? 'server default'}`,
     `contentMap=${combination.contentMapMode ?? 'server default'}`,
     `knowledge=${combination.knowledgeMode ?? 'server default'}`,
   ].join(' ');
