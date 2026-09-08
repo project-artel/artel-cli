@@ -1,0 +1,45 @@
+# pull request 와 `main` push 에서 검사를 돌린다.
+#
+# `release.yml` 은 태그를 밀 때만 돈다. 그것 하나뿐이면 검사가 배포 순간에만 있고, 깨진 변경은
+# merge 된 뒤 태그에서 처음 걸린다. 이 파일은 같은 검사를 merge 전으로 당긴다.
+#
+# Node 버전을 `release.yml` 과 같은 22.14.0 으로 맞춘다. `package.json` 의 engines 는 22.12.0 이고
+# 그것은 사용자가 쓸 수 있는 바닥이지만, 검사를 그 바닥에서 돌리면 배포가 도는 버전과 달라져
+# 여기서 통과한 변경이 태그에서 깨질 수 있다.
+name: ci
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+# 같은 pull request 에 연달아 push 하면 앞 실행의 결과는 필요 없다. `main` push 는 ref 가 달라
+# 서로를 취소하지 않는다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+          cache: npm
+
+      # `npm install` 이 아니라 `npm ci` 다. `package-lock.json` 에 적힌 것만 깔아,
+      # 잠금 파일과 어긋난 의존성이 검사를 통과하는 일을 막는다.
+      - run: npm ci
+
+      # 단계를 합치지 않는다. 어느 검사가 깨졌는지 로그를 스크롤하지 않고 보이게 한다.
+      # 순서는 `release.yml` 과 같다.
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
