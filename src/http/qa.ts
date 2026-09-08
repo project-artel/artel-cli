@@ -14,6 +14,13 @@ import {
 
 export const QA_RUNS_PATH = '/api/qa-runs';
 export const QA_TRIES_PATH = '/api/qa-tries';
+
+/**
+ * `QaTryController.list` 가 `size !in 1..100` 이면 400 이다. CLI 가 이 값을 알고 있어야
+ * 서버 왕복 없이 거절할 수 있다.
+ */
+export const MAX_QA_TRY_LIST_SIZE = 100;
+export const DEFAULT_QA_TRY_LIST_SIZE = 20;
 export const QA_STATS_PATH = '/api/qa-stats';
 
 /**
@@ -37,6 +44,13 @@ export interface QaTry {
   reasoningEffort: string | null;
   agentArch: string | null;
   agentFingerprint: string | null;
+  /**
+   * 이 try 가 속한 `qa_run`. `qa_run` 이 생기기 전의 단독 실행 try 는 `null` 이다.
+   *
+   * `qa show`·`qa watch`·`qa cancel` 이 받는 것은 run id 이므로, try 목록에서 본 것을 다시
+   * 열려면 이 값이 있어야 한다.
+   */
+  qaRunId: string | null;
 }
 
 /** `QaRunResponse`. `tries` 는 시나리오 순서대로이고 실행 전부터 전부 들어 있다(PENDING). */
@@ -256,6 +270,35 @@ export async function cancelQaRun(
  * 전체 로그를 훑지 않는다: 서버의 stream 은 종단 frame 에서 멈추므로 그 뒤로 붙는 frame 이
  * 없고, 판정을 읽는 데 필요한 것은 그 한 장뿐이다.
  */
+/**
+ * 한 프로젝트의 최근 시도. 새것부터 온다.
+ *
+ * 서버가 받는 것은 `projectId` 와 `size` 둘뿐이다 (`QaTryController.list`). `label` 이나
+ * `status` 로 거르는 query parameter 는 없고, `label` 은 `QaTryResponse` 에 실리지도 않는다 —
+ * 그 값은 `qa_run` 에 붙는다. 그래서 CLI 는 받은 것 안에서만 거를 수 있다.
+ *
+ * `size` 는 서버가 1 에서 100 사이로 강제한다. 벗어나면 400 이므로 부르는 쪽이 미리 막는다.
+ */
+export async function listQaTries(
+  apiBaseUrl: string,
+  cliToken: string,
+  projectId: string,
+  size: number,
+  fetchImpl?: FetchLike,
+): Promise<QaTry[]> {
+  const query = new URLSearchParams({ projectId, size: String(size) });
+  const endpoint = `${apiBaseUrl}${QA_TRIES_PATH}?${query.toString()}`;
+  const body = await requestJson({
+    method: 'GET',
+    endpoint,
+    cliToken,
+    ...(fetchImpl === undefined ? {} : { fetchImpl }),
+  });
+  return asArray(body, 'body', endpoint).map((item, index) =>
+    parseQaTry(item, `[${String(index)}]`, endpoint),
+  );
+}
+
 export async function getQaTryLogTail(
   apiBaseUrl: string,
   cliToken: string,
@@ -440,6 +483,7 @@ function parseQaTry(value: unknown, field: string, endpoint: string): QaTry {
       `${field}.agentFingerprint`,
       endpoint,
     ),
+    qaRunId: asNullableString(qaTry['qaRunId'], `${field}.qaRunId`, endpoint),
   };
 }
 

@@ -317,6 +317,37 @@ export interface TestCaseDetailPayload extends TestCasePayload {
  * `project list --json`. 서버가 페이지로 답하므로 `page`·`size`·`total` 을 그대로 싣는다 —
  * `items` 만 내면 받은 것이 전부인지 잘린 것인지 읽는 쪽이 알 수 없다.
  */
+/**
+ * `qa list --json`.
+ *
+ * `fetched` 와 `limit` 을 함께 싣는 이유는 `--status` 가 서버가 아니라 CLI 에서 걸리기
+ * 때문이다. `items.length` 만 내면 그것이 프로젝트 전체에서 나온 수인지 최근 몇 개에서 나온
+ * 수인지 읽는 쪽이 알 수 없다.
+ */
+export interface QaListPayload {
+  items: QaTrySummaryPayload[];
+  /** 서버에서 받은 개수. `--status` 를 걸기 전의 수다. */
+  fetched: number;
+  /** 서버에 보낸 `size`. */
+  limit: number;
+  statusFilter: string | null;
+}
+
+export interface QaTrySummaryPayload {
+  id: string;
+  /** 이 try 가 속한 run. `qa show`·`qa watch`·`qa cancel` 이 받는 것이 이 값이다. */
+  qaRunId: string | null;
+  testScenarioId: string;
+  gameInstanceId: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  model: string | null;
+  promptVersion: string | null;
+  reasoningEffort: string | null;
+  agentArch: string | null;
+}
+
 export interface ProjectListPayload {
   items: ProjectPayload[];
   page: number;

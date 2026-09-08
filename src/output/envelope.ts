@@ -14,6 +14,7 @@ import type {
   ProjectListPayload,
   QaCancelPayload,
   QaDiffPayload,
+  QaListPayload,
   QaMatrixPayload,
   QaRunPayload,
   ScenarioApprovePayload,
@@ -55,6 +56,7 @@ export type CommandPayload =
   | DocumentUploadPayload
   | ContentMapScanPayload
   | ProjectListPayload
+  | QaListPayload
   | GameInstanceListPayload;
 
 /**

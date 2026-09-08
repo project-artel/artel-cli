@@ -18,6 +18,7 @@ import { runGameStart } from './commands/game/start.js';
 import { runProjectList } from './commands/project/list.js';
 import { runQaCancel } from './commands/qa/cancel.js';
 import { runQaDiff } from './commands/qa/diff.js';
+import { runQaList } from './commands/qa/list.js';
 import { runQaMatrix } from './commands/qa/matrix.js';
 import { runQaRun } from './commands/qa/run.js';
 import { runQaShow } from './commands/qa/show.js';
@@ -28,6 +29,7 @@ import { DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH } from './game/launch-args.
 import { DEFAULT_LOGOUT_TIMEOUT_MS } from './game/logout-flow.js';
 import { DEFAULT_REGISTRATION_TIMEOUT_MS } from './game/start-flow.js';
 import { MAX_PROJECT_PAGE_SIZE } from './http/projects.js';
+import { DEFAULT_QA_TRY_LIST_SIZE, MAX_QA_TRY_LIST_SIZE } from './http/qa.js';
 import { processSink, writeErrorEnvelope, type OutputSink } from './output/envelope.js';
 import { cliVersionForDisplay } from './version.js';
 import {
@@ -561,6 +563,52 @@ export async function runCli(
             timeoutSeconds: parseTimeoutSeconds(options.timeout),
             apiUrl: options.apiUrl,
             consoleUrl: options.consoleUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  qa.command('list')
+    .description(
+      "List a project's recent QA tries, newest first, with the run id each one belongs to",
+    )
+    .requiredOption('--project <id>', 'project whose QA tries to list')
+    .option(
+      '--limit <n>',
+      `tries to fetch; the server takes 1 to ${String(MAX_QA_TRY_LIST_SIZE)}`,
+      String(DEFAULT_QA_TRY_LIST_SIZE),
+    )
+    .option(
+      '--status <status>',
+      'keep only tries in this status. The server has no status filter, so this narrows the tries --limit fetched rather than the whole project',
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .option('--console-url <url>', QA_CONSOLE_URL_HELP)
+    .action(
+      async (options: {
+        project: string;
+        limit: string;
+        status?: string | undefined;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        const limit = parsePositiveInt(options.limit, '--limit');
+        if (limit > MAX_QA_TRY_LIST_SIZE) {
+          throw new UsageError(
+            `--limit is ${String(limit)}, but the server takes at most ${String(MAX_QA_TRY_LIST_SIZE)}.`,
+          );
+        }
+        await runQaList(
+          {
+            json: options.json,
+            project: options.project,
+            limit,
+            status: options.status,
+            apiUrl: options.apiUrl,
           },
           sink,
           env,

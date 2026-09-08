@@ -9,6 +9,7 @@ import { runGameList } from '../src/commands/game/list.js';
 import { runDocScan } from '../src/commands/doc/scan.js';
 import { runDocUpload } from '../src/commands/doc/upload.js';
 import { runProjectList } from '../src/commands/project/list.js';
+import { runQaList } from '../src/commands/qa/list.js';
 import { enforcesFileMode, writeCredential } from '../src/credentials/store.js';
 import { CREDENTIAL_FILE_VERSION } from '../src/credentials/types.js';
 import type {
@@ -19,6 +20,7 @@ import type {
   LoginPayload,
   LogoutPayload,
   ProjectListPayload,
+  QaListPayload,
   StatusPayload,
 } from '../src/output/contract.js';
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, runCli } from '../src/run.js';
@@ -29,6 +31,7 @@ import {
   startFakeDiscoveryServer,
   type FakeDiscoveryServer,
 } from './discovery-helpers.js';
+import { listedTry, startFakeListServer, type FakeListServer } from './qa-list-helpers.js';
 import {
   callBack,
   createMemorySink,
@@ -77,6 +80,20 @@ const LOGOUT_KEYS = ['credentialsPath', 'removed', 'serverSideRevoked', 'tokenId
 const PROJECT_LIST_KEYS = ['items', 'page', 'size', 'total'];
 const PROJECT_KEYS = ['description', 'genre', 'id', 'myRole', 'name', 'updatedAt'];
 const GAME_LIST_KEYS = ['items'];
+const QA_LIST_KEYS = ['fetched', 'items', 'limit', 'statusFilter'];
+const QA_TRY_SUMMARY_KEYS = [
+  'agentArch',
+  'completedAt',
+  'gameInstanceId',
+  'id',
+  'model',
+  'promptVersion',
+  'qaRunId',
+  'reasoningEffort',
+  'startedAt',
+  'status',
+  'testScenarioId',
+];
 const GAME_INSTANCE_KEYS = [
   'connected',
   'createdAt',
@@ -170,6 +187,24 @@ describe('--json key sets', () => {
       expect(Object.keys(payload.items[0] ?? {}).sort()).toEqual(PROJECT_KEYS);
     } finally {
       await discovery.close();
+    }
+  });
+
+  it('qa list emits exactly its contracted keys', async () => {
+    const listServer: FakeListServer = await startFakeListServer([listedTry()]);
+    try {
+      const sink = createMemorySink();
+      await runQaList({ json: true, project: '1', limit: 20 }, sink, {
+        ARTEL_CONFIG_DIR: temp.configDir,
+        ARTEL_API_BASE_URL: listServer.baseUrl,
+        ARTEL_TOKEN: 'artel_env_token',
+      });
+
+      const payload = sink.lastJson<QaListPayload>();
+      expect(Object.keys(payload).sort()).toEqual(QA_LIST_KEYS);
+      expect(Object.keys(payload.items[0] ?? {}).sort()).toEqual(QA_TRY_SUMMARY_KEYS);
+    } finally {
+      await listServer.close();
     }
   });
 
