@@ -183,6 +183,25 @@ every rate the human table prints is derived from those sums with its
 denominator shown next to it. A cell whose axes are unknown (a run from before
 the server recorded them) never matches a selector that names an axis.
 
+## Reading what a run found
+
+A QA run produces two things: a verdict, and the defects it found on the way.
+`artel issue` reads and settles the second. These are the run's findings, not
+Jira issues.
+
+**`artel issue list --project <id>`** names them newest first, each with the run
+and try it came from so `artel qa show <run id>` opens the context. `--status`
+and `--severity` are the server's own filters, so they narrow the whole project
+rather than the page that came back. The listing is a cursor page: when there is
+more, the output says so and prints the `--before` cursor that opens the next
+one.
+
+**`artel issue resolve <id>`** and **`artel issue reopen <id>`** change the mark.
+The server answers these with an empty `204`, so `--json` reports what the CLI
+knows — which issue, which action, and the status that action means — rather than
+a re-read of the issue. There is no endpoint that returns one issue, so
+`artel issue list` is how you check.
+
 ## Running a matrix of configurations
 
 **`artel qa matrix`** expands the cartesian product of the axis lists and runs

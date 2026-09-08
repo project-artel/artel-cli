@@ -391,6 +391,43 @@ export interface QaLabelsPayload {
   projectId: string | null;
 }
 
+/**
+ * `issue list --json`. 최신순 커서 페이지다.
+ *
+ * `nextBeforeId` 와 `hasMore` 를 그대로 싣는다. 커서를 감추면 받은 것이 전부인지 잘린 것인지
+ * 읽는 쪽이 알 수 없고, 없는 이슈를 없다고 읽는다.
+ */
+export interface IssueListPayload {
+  items: IssuePayload[];
+  nextBeforeId: string | null;
+  hasMore: boolean;
+}
+
+export interface IssuePayload {
+  id: string;
+  /** 이 이슈를 찾은 try. */
+  qaTryId: string;
+  /** 그 try 가 속한 run. `qa show` 가 받는 값이다. */
+  qaRunId: string | null;
+  severity: string;
+  title: string;
+  status: string;
+  reportedAt: string;
+  resolvedAt: string | null;
+}
+
+/**
+ * `issue resolve --json` 과 `issue reopen --json`.
+ *
+ * 서버가 본문 없는 204 를 내므로 이것은 되읽은 값이 아니라 CLI 가 아는 사실이다 — 어느 이슈에
+ * 어느 명령을 걸었고 그것이 성공했다는 것. 실제 상태를 다시 확인하려면 `issue list` 를 부른다.
+ */
+export interface IssueStatusChangePayload {
+  issueId: string;
+  action: 'resolve' | 'reopen';
+  status: string;
+}
+
 export interface QaListPayload {
   items: QaTrySummaryPayload[];
   /** 서버에서 받은 개수. `--status` 를 걸기 전의 수다. */

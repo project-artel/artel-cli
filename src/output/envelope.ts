@@ -9,6 +9,8 @@ import type {
   GameInstanceListPayload,
   GameLogoutPayload,
   GameStartPayload,
+  IssueListPayload,
+  IssueStatusChangePayload,
   LoginPayload,
   LogoutPayload,
   ProjectListPayload,
@@ -58,6 +60,8 @@ export type CommandPayload =
   | DocumentUploadPayload
   | ContentMapScanPayload
   | ProjectListPayload
+  | IssueListPayload
+  | IssueStatusChangePayload
   | QaListPayload
   | QaLabelsPayload
   | QaModelsPayload

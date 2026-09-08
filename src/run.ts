@@ -15,6 +15,8 @@ import { runDocUpload } from './commands/doc/upload.js';
 import { runGameList } from './commands/game/list.js';
 import { runGameLogout } from './commands/game/logout.js';
 import { runGameStart } from './commands/game/start.js';
+import { runIssueList } from './commands/issue/list.js';
+import { runIssueStatusChange } from './commands/issue/status.js';
 import { runProjectList } from './commands/project/list.js';
 import { runQaCancel } from './commands/qa/cancel.js';
 import { runQaDiff } from './commands/qa/diff.js';
@@ -30,6 +32,7 @@ import { DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH } from './game/launch-args.
 import { DEFAULT_LOGOUT_TIMEOUT_MS } from './game/logout-flow.js';
 import { DEFAULT_REGISTRATION_TIMEOUT_MS } from './game/start-flow.js';
 import { MAX_PROJECT_PAGE_SIZE } from './http/projects.js';
+import { DEFAULT_ISSUE_PAGE_SIZE } from './http/issues.js';
 import { DEFAULT_QA_TRY_LIST_SIZE, MAX_QA_TRY_LIST_SIZE } from './http/qa.js';
 import { processSink, writeErrorEnvelope, type OutputSink } from './output/envelope.js';
 import { cliVersionForDisplay } from './version.js';
@@ -1338,6 +1341,86 @@ export async function runCli(
 
   const DOC_CONSOLE_URL_HELP =
     'console base URL; doc commands never call the console, so this is accepted and unused';
+
+  const issue = program
+    .command('issue')
+    .description(
+      "Read and settle the defects a QA run found. These are the run's findings, not Jira issues",
+    );
+
+  issue
+    .command('list')
+    .description("List a project's issues, newest first")
+    .requiredOption('--project <id>', 'project whose issues to list')
+    .option('--status <status>', 'keep only OPEN or RESOLVED issues; the server does the filtering')
+    .option('--severity <severity>', 'keep only issues of this severity')
+    .option(
+      '--before <id>',
+      'read the page before this issue id; use the cursor the last page printed',
+    )
+    .option('--limit <n>', 'issues per page', String(DEFAULT_ISSUE_PAGE_SIZE))
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (options: {
+        project: string;
+        status?: string | undefined;
+        severity?: string | undefined;
+        before?: string | undefined;
+        limit: string;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runIssueList(
+          {
+            json: options.json,
+            project: options.project,
+            limit: parsePositiveInt(options.limit, '--limit'),
+            status: options.status,
+            severity: options.severity,
+            before: options.before,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  issue
+    .command('resolve')
+    .description('Mark an issue resolved')
+    .argument('<issue-id>', 'issue to resolve')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(async (issueId: string, options: { json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runIssueStatusChange(
+        issueId,
+        'resolve',
+        { json: options.json, apiUrl: options.apiUrl },
+        sink,
+        env,
+      );
+    });
+
+  issue
+    .command('reopen')
+    .description('Undo a resolved mark, so the issue counts as open again')
+    .argument('<issue-id>', 'issue to reopen')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(async (issueId: string, options: { json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runIssueStatusChange(
+        issueId,
+        'reopen',
+        { json: options.json, apiUrl: options.apiUrl },
+        sink,
+        env,
+      );
+    });
 
   const doc = program
     .command('doc')

@@ -38,6 +38,7 @@ export const ERROR_CODES = [
   'matrix_journal_unwritable',
   'matrix_journal_unreadable',
   'matrix_journal_mismatch',
+  'issue_not_found',
   'case_not_found',
   'case_invalid_request',
   'case_invalid_body',
