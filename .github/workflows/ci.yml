@@ -8,10 +8,11 @@
 # 여기서 통과한 변경이 태그에서 깨질 수 있다.
 name: ci
 
+# pull request 는 base 를 가리지 않는다. 이 저장소는 `blocks` 로 묶인 작업을 스택으로 쌓고
+# (`pull-request.md` 의 `## Stacked Pull Requests`), 스택의 두 번째부터는 base 가 `main` 이 아니라
+# 앞 branch 다. `branches: [main]` 으로 좁히면 그 PR 들이 검사를 하나도 받지 못한다.
 on:
   pull_request:
-    branches:
-      - main
   push:
     branches:
       - main
