@@ -320,6 +320,7 @@ async function runCombination(
       verdict: finished.verdict,
       stepsPassed: finished.steps.passed,
       stepsTotal: finished.steps.total,
+      usage: finished.usage,
       durationMs: Date.now() - startedAt,
       error: null,
     };
@@ -343,6 +344,7 @@ async function runCombination(
       verdict: null,
       stepsPassed: null,
       stepsTotal: null,
+      usage: null,
       durationMs: Date.now() - startedAt,
       error: failure,
     };

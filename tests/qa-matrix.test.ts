@@ -327,6 +327,7 @@ describe('runQaMatrix', () => {
       'stepsPassed',
       'stepsTotal',
       'testRunId',
+      'usage',
       'verdict',
     ]);
   });

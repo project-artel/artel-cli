@@ -16,16 +16,17 @@ import type {
   QaMatrixPayload,
   QaMetricsPayload,
   QaRunPayload,
+  QaUsagePayload,
   QaVerdictValue,
   ScenarioApprovePayload,
   ScenarioDeletePayload,
   ScenarioListPayload,
   ScenarioPayload,
+  StatusPayload,
   TestRunDeletePayload,
   TestRunListPayload,
   TestRunPayload,
   TestRunScenariosPayload,
-  StatusPayload,
 } from './contract.js';
 import type { OutputSink } from './envelope.js';
 
@@ -188,6 +189,7 @@ export function printQaRun(sink: OutputSink, payload: QaRunPayload): void {
   sink.out(`  completed      ${payload.completedAt ?? '-'}`);
   sink.out(`  steps          ${describeCounts(payload.steps)}`);
   sink.out(`  cases          ${describeCounts(payload.cases)}`);
+  sink.out(`  usage          ${describeUsage(payload.usage)}`);
 
   for (const qaTry of payload.tries) {
     sink.out(
@@ -213,6 +215,28 @@ export function printQaRun(sink: OutputSink, payload: QaRunPayload): void {
   for (const issue of payload.issues) {
     sink.out(`    ${issue.severity}  ${issue.title}  (issue ${issue.issueId}, ${issue.status})`);
   }
+}
+
+/**
+ * 지출 한 줄.
+ *
+ * `costUsd` 가 없는 것과 0 인 것을 구별해 적는다. 둘을 같은 `$0.00` 으로 그리면, 단가를 모르는
+ * provider 로 돌린 arm 이 공짜였던 것으로 읽힌다. 금액이 몇 건의 호출에 얹혔는지도 함께 적어,
+ * 일부만 값이 매겨진 금액을 전체 비용으로 읽지 않게 한다.
+ */
+function describeUsage(usage: QaUsagePayload | null): string {
+  if (usage === null) {
+    return 'not read';
+  }
+  const tokens = `${String(usage.inputTokens)} in / ${String(usage.outputTokens)} out`;
+  if (usage.costUsd === null) {
+    return `${tokens}, ${String(usage.calls)} call(s), cost unknown (no priced call)`;
+  }
+  const priced =
+    usage.pricedCalls === usage.calls
+      ? `${String(usage.calls)} call(s)`
+      : `${String(usage.pricedCalls)} of ${String(usage.calls)} call(s) priced`;
+  return `${tokens}, ${priced}, $${usage.costUsd.toFixed(4)}`;
 }
 
 /**

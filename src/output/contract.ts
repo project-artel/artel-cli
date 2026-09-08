@@ -147,6 +147,29 @@ export interface QaTryPayload {
   steps: QaCountsPayload;
   cases: QaCountsPayload;
   stepResults: QaStepPayload[];
+  /** 이 try 의 지출. 읽지 못했으면 `null` 이다. */
+  usage: QaUsagePayload | null;
+}
+
+/**
+ * 런 하나 또는 try 하나가 쓴 LLM 지출. 필드 이름은 서버의 `LlmUsageTotals` 그대로다.
+ *
+ * 전부 합계다. `costUsd` 가 `null` 이면 단가를 아는 호출이 하나도 없다는 뜻이고 0 과 다르다 —
+ * 둘을 같은 0 으로 읽으면 arm 비용 비교가 조용히 틀린다. `pricedCalls` 가 `calls` 보다 작으면
+ * 그 금액은 일부 호출에만 얹힌 값이다.
+ *
+ * `cachedInputTokens` 는 `inputTokens` 에 포함된 값이라 더하면 두 번 센다.
+ *
+ * payload 자체가 `null` 이면 사용량을 읽지 못했다는 뜻이다. 지출이 0 이었다는 뜻이 아니다.
+ */
+export interface QaUsagePayload {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  reasoningTokens: number;
+  costUsd: number | null;
+  calls: number;
+  pricedCalls: number;
 }
 
 /** `qa run`, `qa watch`, `qa show` 가 모두 이 한 모양을 낸다. */
@@ -162,6 +185,8 @@ export interface QaRunPayload {
   cases: QaCountsPayload;
   tries: QaTryPayload[];
   issues: QaIssuePayload[];
+  /** try 들의 합. 하나도 읽지 못했으면 `null` 이다. */
+  usage: QaUsagePayload | null;
 }
 
 export interface QaCancelPayload {
@@ -200,6 +225,11 @@ export interface QaMatrixCombinationPayload {
   verdict: QaVerdictValue;
   stepsPassed: number | null;
   stepsTotal: number | null;
+  /**
+   * 이 조합이 쓴 지출. arm 을 비교할 때 "어느 쪽이 더 맞혔나" 만으로는 결론이 서지 않는다 —
+   * 정확도를 조금 올리면서 token 을 두 배 쓴 arm 은 다른 결론이다.
+   */
+  usage: QaUsagePayload | null;
   /** 게임을 띄우기 시작해 런이 끝날 때까지. 띄우는 시간이 들어 있다. */
   durationMs: number;
   /** 실패한 이유. 통과했거나 판정만 `FAILED` 인 조합은 `null` 이다. */
