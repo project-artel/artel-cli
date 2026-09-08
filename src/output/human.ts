@@ -240,12 +240,45 @@ function describeUsage(usage: QaUsagePayload | null): string {
 }
 
 /**
+ * 반복을 켰을 때만 조합별 통과 횟수를 적는다.
+ *
+ * 세는 것까지가 CLI 의 일이다. 평균도 분산도 내지 않는다 — 몇 번 중 몇 번인지는 분모가 보이는
+ * 세기이고, 그 위의 통계는 이 목록을 읽는 쪽이 낸다. `qa diff` 가 비율 대신 합을 다루는 것과
+ * 같은 규율이다.
+ */
+function printRepeatTally(sink: OutputSink, payload: QaMatrixPayload): void {
+  const repeated = new Map<number, { passed: number; of: number; axes: string }>();
+  for (const combination of payload.combinations) {
+    const tally = repeated.get(combination.combination) ?? {
+      passed: 0,
+      of: 0,
+      axes: describeAxes(combination),
+    };
+    tally.of += 1;
+    if (combination.verdict === 'PASSED') {
+      tally.passed += 1;
+    }
+    repeated.set(combination.combination, tally);
+  }
+
+  // 반복이 없으면 조합 줄을 그대로 다시 적는 것이 되어 아무것도 더하지 않는다.
+  if ([...repeated.values()].every((tally) => tally.of === 1)) {
+    return;
+  }
+
+  sink.out('  by combination:');
+  for (const [combination, tally] of repeated) {
+    sink.out(
+      `    [${String(combination + 1)}] ${String(tally.passed)}/${String(tally.of)} passed  ${tally.axes}`,
+    );
+  }
+}
+
+/**
  * `qa matrix` 요약. 조합마다 한 줄이고, 축 값을 그대로 적는다 — arm 이름은 짓지 않는다.
  */
 export function printQaMatrix(sink: OutputSink, payload: QaMatrixPayload): void {
-  sink.out(
-    `QA matrix — ${String(payload.succeeded)}/${String(payload.total)} combinations passed.`,
-  );
+  sink.out(`QA matrix — ${String(payload.succeeded)}/${String(payload.total)} runs passed.`);
   sink.out(`  project        ${payload.projectId}`);
   sink.out(`  label          ${payload.label ?? '-'}`);
   payload.slots.forEach((build, slot) => {
@@ -261,11 +294,13 @@ export function printQaMatrix(sink: OutputSink, payload: QaMatrixPayload): void 
     );
   }
 
+  printRepeatTally(sink, payload);
+
   const failures = payload.combinations.filter((combination) => combination.verdict !== 'PASSED');
   if (failures.length === 0) {
     return;
   }
-  sink.out(`  ${String(failures.length)} combinations did not pass:`);
+  sink.out(`  ${String(failures.length)} runs did not pass:`);
   for (const combination of failures) {
     sink.out(
       `    [${String(combination.index + 1)}] ${describeAxes(combination)} — ${

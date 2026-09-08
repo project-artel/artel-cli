@@ -27,6 +27,16 @@ export interface MatrixAxes {
 export interface MatrixCombination {
   /** 전개 순서. 0부터. 슬롯 배정과 결과 정렬이 모두 이 번호를 쓴다. */
   index: number;
+  /**
+   * 축 값이 같은 반복들이 공유하는 번호. 0부터.
+   *
+   * `--repeat` 이 1 이면 [index] 와 같다. 2 이상이면 같은 설정의 런 여럿이 같은
+   * `combination` 을 갖고 [repeat] 으로 갈린다 — 그 둘을 하나로 뭉개면 반복이 무엇을 위한
+   * 것인지가 결과에서 사라진다.
+   */
+  combination: number;
+  /** 그 조합의 몇 번째 반복인지. 0부터. */
+  repeat: number;
   testRunId: string;
   model: AxisValue;
   promptVersion: AxisValue;
@@ -42,23 +52,39 @@ export interface MatrixCombination {
  * 순서를 고정하는 것이 요점이다. 같은 명령을 두 번 돌리면 같은 조합이 같은 번호를 받고,
  * 그래야 [assignToSlots] 의 배정도 두 번 다 같다.
  */
-export function expandCombinations(axes: MatrixAxes): readonly MatrixCombination[] {
+/**
+ * 반복은 축이 아니라 가장 안쪽 되풀이다.
+ *
+ * 축으로 두면 `--repeat 3` 이 축 목록의 순서에 끼어들어, 반복을 켜는 것만으로 조합 번호와
+ * 슬롯 배정이 통째로 달라진다. 가장 안쪽에 두면 `--repeat 1` 일 때의 번호가 그대로 유지되고,
+ * 같은 조합의 반복들이 슬롯에 흩어져 한 슬롯의 빌드 성질이 한 조합에만 몰리지 않는다.
+ */
+export function expandCombinations(
+  axes: MatrixAxes,
+  repeats = 1,
+): readonly MatrixCombination[] {
   const combinations: MatrixCombination[] = [];
+  let combination = 0;
   for (const testRunId of axes.testRunIds) {
     for (const model of axes.models) {
       for (const promptVersion of axes.promptVersions) {
         for (const reasoningEffort of axes.reasoningEfforts) {
           for (const contentMapMode of axes.contentMapModes) {
             for (const knowledgeMode of axes.knowledgeModes) {
-              combinations.push({
-                index: combinations.length,
-                testRunId,
-                model,
-                promptVersion,
-                reasoningEffort,
-                contentMapMode,
-                knowledgeMode,
-              });
+              for (let repeat = 0; repeat < repeats; repeat += 1) {
+                combinations.push({
+                  index: combinations.length,
+                  combination,
+                  repeat,
+                  testRunId,
+                  model,
+                  promptVersion,
+                  reasoningEffort,
+                  contentMapMode,
+                  knowledgeMode,
+                });
+              }
+              combination += 1;
             }
           }
         }
@@ -88,7 +114,7 @@ export function assignToSlots(
 }
 
 /** 조합 하나를 사람이 읽을 한 줄로. arm 이름을 짓지 않고 축 값 그대로 적는다. */
-export function describeCombination(combination: MatrixCombination): string {
+export function describeCombination(combination: MatrixCombination, repeats = 1): string {
   return [
     `testRun=${combination.testRunId}`,
     `model=${combination.model ?? 'server default'}`,
@@ -96,5 +122,10 @@ export function describeCombination(combination: MatrixCombination): string {
     `reasoning=${combination.reasoningEffort ?? 'server default'}`,
     `contentMap=${combination.contentMapMode ?? 'server default'}`,
     `knowledge=${combination.knowledgeMode ?? 'server default'}`,
+    // 반복이 하나뿐이면 적지 않는다. `--repeat` 을 쓰지 않은 사람의 출력에 늘 `repeat=1/1` 이
+    // 붙으면, 그 줄이 무엇을 세는 것인지 묻게 된다.
+    ...(repeats === 1
+      ? []
+      : [`repeat=${String(combination.repeat + 1)}/${String(repeats)}`]),
   ].join(' ');
 }

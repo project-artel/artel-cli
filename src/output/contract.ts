@@ -208,6 +208,16 @@ export interface QaCancelPayload {
 export interface QaMatrixCombinationPayload {
   /** 전개 순서. 0부터. 같은 명령은 같은 조합에 같은 번호를 준다. */
   index: number;
+  /**
+   * 축 값이 같은 반복들이 공유하는 번호. `--repeat` 이 1 이면 [index] 와 같다.
+   *
+   * 이 둘을 나눠 싣는 이유는 반복이 통계의 재료이기 때문이다. `combination` 으로 묶고
+   * `repeat` 으로 세면 조합마다 몇 번 중 몇 번 통과했는지가 나오는데, 하나로 뭉개면 그 계산이
+   * 불가능해진다. CLI 는 그 계산을 하지 않고 재료만 낸다.
+   */
+  combination: number;
+  /** 그 조합의 몇 번째 반복인지. 0부터. */
+  repeat: number;
   /** 이 조합이 돈 슬롯. 0부터, `--slot` 을 적은 순서다. */
   slot: number;
   /** 그 슬롯의 빌드 경로. 슬롯마다 빌드가 다르다. */

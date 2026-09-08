@@ -513,6 +513,11 @@ export async function runCli(
       'comma-separated reasoning efforts, one axis of the product; the values depend on the model and "artel qa models" lists them',
     )
     .option(
+      '--repeat <n>',
+      'runs per combination. A QA run is not deterministic, so one run per cell cannot tell an arm apart from a lucky day',
+      '1',
+    )
+    .option(
       '--reasoning-max-tokens <n>',
       'reasoning token budget for every combination. Not an axis: it is the budget under a model and an effort, so multiplying it against those two produces combinations that do not go together',
     )
@@ -555,6 +560,7 @@ export async function runCli(
         model?: string | undefined;
         promptVersion?: string | undefined;
         reasoningEffort?: string | undefined;
+        repeat: string;
         reasoningMaxTokens?: string | undefined;
         arch?: string | undefined;
         contentMapMode?: string | undefined;
@@ -589,6 +595,7 @@ export async function runCli(
               options.reasoningEffort === undefined
                 ? [null]
                 : parseAxisList(options.reasoningEffort, '--reasoning-effort'),
+            repeats: parsePositiveInt(options.repeat, '--repeat'),
             // 축이 아니라 전 조합에 걸리는 고정값이다. 이유는 `--help` 에 적혀 있다.
             ...(options.reasoningMaxTokens === undefined
               ? {}

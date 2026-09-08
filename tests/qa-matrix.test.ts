@@ -101,6 +101,43 @@ describe('expandCombinations', () => {
     expect(combinations.every((c) => c.model === 'openai/gpt-5.6-luna')).toBe(true);
   });
 
+  /**
+   * QA agent 의 런은 결정적이지 않다. 조합당 한 번씩 돌린 표로 두 arm 을 비교하면, 본 차이가
+   * arm 때문인지 그날의 운인지 구분할 수 없다.
+   */
+  it('repeats each combination the asked number of times', () => {
+    const combinations = expandCombinations(axes({ testRunIds: ['1', '2'] }), 3);
+
+    expect(combinations).toHaveLength(6);
+    expect(combinations.map((c) => [c.combination, c.repeat])).toEqual([
+      [0, 0],
+      [0, 1],
+      [0, 2],
+      [1, 0],
+      [1, 1],
+      [1, 2],
+    ]);
+  });
+
+  /**
+   * 반복을 축으로 두면 `--repeat` 을 켜는 것만으로 조합 번호와 슬롯 배정이 통째로 달라진다.
+   * 가장 안쪽에 두면 `--repeat 1` 일 때의 번호가 그대로 유지된다.
+   */
+  it('leaves the numbering of a single-run matrix untouched', () => {
+    const given = axes({ testRunIds: ['1', '2'], contentMapModes: ['off', 'frozen'] });
+
+    expect(expandCombinations(given, 1)).toEqual(expandCombinations(given));
+  });
+
+  it('gives the repeats of one combination the same axis values', () => {
+    const combinations = expandCombinations(axes({ models: ['openai/gpt-5.6-luna'] }), 2);
+
+    expect(combinations).toHaveLength(2);
+    expect(combinations[0]?.model).toBe(combinations[1]?.model);
+    expect(combinations[0]?.combination).toBe(combinations[1]?.combination);
+    expect(combinations[0]?.repeat).not.toBe(combinations[1]?.repeat);
+  });
+
   it('keeps an axis with no flag as a single combination that names no value', () => {
     // `null` 은 그 축의 flag 를 주지 않았다는 뜻이다. 조합은 그대로 하나 생기고, body 에는
     // 그 키가 실리지 않아 서버가 자기 기본값을 쓴다.
@@ -136,6 +173,20 @@ describe('assignToSlots', () => {
       [0, 2],
       [1, 3],
     ]);
+    expect(second).toEqual(first);
+  });
+
+  /** 반복을 켜도 배정이 결정적이어야 한다. 그래야 같은 명령 두 번의 결과를 나란히 놓는다. */
+  it('sends the repeats of one combination to the same slots on every run', () => {
+    const combinations = expandCombinations(axes({ testRunIds: ['1', '2'] }), 3);
+
+    const first = assignToSlots(combinations, 2).map((slot) =>
+      slot.map((combination) => [combination.combination, combination.repeat]),
+    );
+    const second = assignToSlots(combinations, 2).map((slot) =>
+      slot.map((combination) => [combination.combination, combination.repeat]),
+    );
+
     expect(second).toEqual(first);
   });
 
@@ -298,6 +349,7 @@ describe('runQaMatrix', () => {
       reasoningEfforts: [null],
       contentMapModes: ['off', 'frozen'],
       knowledgeModes: [null],
+      repeats: 1,
       slots: [BUILD_A, BUILD_B],
       width: 1280,
       height: 720,
@@ -375,6 +427,7 @@ describe('runQaMatrix', () => {
     ]);
     expect(Object.keys(payload.combinations[0] ?? {}).sort()).toEqual([
       'build',
+      'combination',
       'contentMapMode',
       'durationMs',
       'error',
@@ -385,6 +438,7 @@ describe('runQaMatrix', () => {
       'promptVersion',
       'qaRunId',
       'reasoningEffort',
+      'repeat',
       'slot',
       'status',
       'stepsPassed',

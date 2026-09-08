@@ -223,6 +223,15 @@ together; `--arch` is one JSON object and cannot be split on commas. A work-stea
 sooner but would decide that by timing, and which build a run happened on is part
 of the measurement.
 
+**`--repeat n` runs each combination n times.** A QA run is not deterministic:
+the same configuration twice does not give the same result. A table with one run
+per cell cannot tell whether the difference you see came from the arm or from
+that day's luck. The runs stay separate in the output — each carries the
+combination it belongs to and which repeat it was — and the human summary adds a
+line per combination saying how many of its runs passed. The CLI counts; it does
+not average. What sits on top of that count is for whatever reads the list, the
+same way `artel qa diff` hands out sums rather than ratios.
+
 **A slot runs one QA run at a time.** Two runs on one game instance do not
 overlap — the second ends the first, and the server only allows that with
 `force` — so a slot is a work queue, not a parallelism knob.
