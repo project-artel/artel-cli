@@ -26,6 +26,7 @@ import { DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH } from './game/launch-args.
 import { DEFAULT_LOGOUT_TIMEOUT_MS } from './game/logout-flow.js';
 import { DEFAULT_REGISTRATION_TIMEOUT_MS } from './game/start-flow.js';
 import { processSink, writeErrorEnvelope, type OutputSink } from './output/envelope.js';
+import { cliVersionForDisplay } from './version.js';
 import {
   CONTENT_MAP_MODES,
   KNOWLEDGE_MODES,
@@ -151,6 +152,9 @@ export async function runCli(
   program
     .name('artel')
     .description('The command line interface for the ARTEL platform')
+    // `-V, --version` 은 commander 의 기본 flag 다. 다른 이름을 주면 버그 보고에 버전을 붙여
+    // 달라고 부탁할 때 그 명령이 다른 도구들과 달라진다.
+    .version(cliVersionForDisplay())
     .exitOverride()
     .configureOutput({
       writeOut: (text) => {

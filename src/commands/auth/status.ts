@@ -2,6 +2,7 @@ import { reportOf, resolveCredential } from '../../credentials/resolve.js';
 import type { StatusPayload } from '../../output/contract.js';
 import { writeJsonPayload, type OutputSink } from '../../output/envelope.js';
 import { printStatus } from '../../output/human.js';
+import { readCliVersion } from '../../version.js';
 
 export interface AuthStatusOptions {
   json: boolean;
@@ -20,6 +21,7 @@ export async function runAuthStatus(
   const report = reportOf(resolution);
 
   const payload: StatusPayload = {
+    cliVersion: readCliVersion(),
     authenticated: report.authenticated,
     source: report.source,
     envVarState: resolution.envVarState,
