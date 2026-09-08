@@ -17,17 +17,28 @@ Running a QA agent against a game, from a terminal or from CI, without opening
 the console in a browser.
 
 ```
-artel auth login
-artel project list
+artel auth login                                        # this machine's credential
+artel project list                                      # ids the other commands take
+artel doc upload --project <id> design.pdf              # the plan the agent reads
+artel case create --project <id> --file cases.json      # what the agent should check
+artel scenario create --project <id> --steps steps.json # how it should check it
+artel run create --project <id> --name smoke            # a set of scenarios
+artel run scenarios <run id> --project <id> --set <ids> # fill that set
 artel game start --build ./Build/Game.exe --project <id>
-artel game list --project <id>
-artel qa run --test-run <id> --instance <id>
+artel game list --project <id>                          # ids qa run takes
+artel qa run --test-run <id> --instance <id>            # start one, watch to a verdict
+artel qa matrix --test-run 1,2 --slot ... --slot ...    # many, spread over builds
 artel qa watch <run id>
 artel qa show <run id>
-artel qa cancel <run id>
-artel qa diff <config> <config>
+artel qa list --project <id>                            # find a run you lost
+artel qa diff <config> <config>                         # two configurations, compared
+artel issue list --project <id>                         # what the runs found
+artel map show --project <id> --build <id>              # what the agent could read
 artel game logout --build ./Build/Game.exe --project <id>
 ```
+
+`artel <group> --help` lists the rest of each group. Every group is real today;
+this README does not describe commands that do not exist.
 
 Every command that reports a result also takes `--json`, because the reader is
 as often a program or a coding agent as it is a person. That JSON shape is a
@@ -107,7 +118,8 @@ two full-screen games cover each other.
 
 The command waits until the build registers with the server, then prints the
 resulting game instance id and exits — the build itself keeps running. That id
-is what the QA commands (not yet built) take to address this run. If
+is what `artel qa run --instance` takes to address this run, and
+`artel game list` finds it again later. If
 registration does not happen within `--timeout` seconds (default 60), or the
 build exits first, the error says which and names the log file.
 
