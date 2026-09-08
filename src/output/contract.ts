@@ -22,6 +22,8 @@ export interface LoginPayload {
 }
 
 export interface StatusPayload {
+  /** 이 CLI 의 버전. `package.json` 을 읽지 못했으면 `null` 이다. */
+  cliVersion: string | null;
   authenticated: boolean;
   source: 'env' | 'file' | null;
   envVarState: 'used' | 'empty' | 'unset';

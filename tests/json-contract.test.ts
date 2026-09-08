@@ -49,6 +49,7 @@ const LOGIN_KEYS = [
 const STATUS_KEYS = [
   'apiBaseUrl',
   'authenticated',
+  'cliVersion',
   'credentialsFileExists',
   'credentialsPath',
   'envVarState',

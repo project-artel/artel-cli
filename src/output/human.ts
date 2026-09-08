@@ -54,6 +54,7 @@ export function printLogin(sink: OutputSink, payload: LoginPayload, overwrote: b
 export function printStatus(sink: OutputSink, payload: StatusPayload): void {
   if (!payload.authenticated) {
     sink.out('Not signed in.');
+    sink.out(describeCliVersion(payload.cliVersion));
     sink.out(`  credentials file  ${payload.credentialsPath} (missing)`);
     sink.out(describeEnvVar(payload.envVarState));
     sink.out('Run "artel auth login", or set ARTEL_TOKEN.');
@@ -61,6 +62,7 @@ export function printStatus(sink: OutputSink, payload: StatusPayload): void {
   }
 
   sink.out(payload.source === 'env' ? 'Signed in with ARTEL_TOKEN.' : 'Signed in.');
+  sink.out(describeCliVersion(payload.cliVersion));
   sink.out(`  fingerprint       ${payload.fingerprint ?? '-'}`);
   sink.out(
     `  credentials file  ${payload.credentialsPath} (${payload.credentialsFileExists ? describeMode(payload.mode) : 'missing'})`,
@@ -72,6 +74,14 @@ export function printStatus(sink: OutputSink, payload: StatusPayload): void {
     sink.out(`  expires at        ${payload.expiresAt ?? 'never'}`);
     sink.out(`  api base url      ${payload.apiBaseUrl ?? '-'}`);
   }
+}
+
+/**
+ * 버전은 서명 여부와 무관하게 적는다. 이 출력을 통째로 붙여 올리는 버그 보고가 어느 build 였는지
+ * 말하게 하는 것이 이 줄의 쓰임이고, 로그인하지 못한 것 자체가 그 보고의 내용인 경우가 많다.
+ */
+function describeCliVersion(version: string | null): string {
+  return `  cli version       ${version ?? 'unknown'}`;
 }
 
 export function printLogout(sink: OutputSink, payload: LogoutPayload): void {
