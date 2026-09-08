@@ -14,15 +14,12 @@ export const DEFAULT_LOGIN_TIMEOUT_MS = 180_000;
  * 콘솔의 relay page. 기존 `challenge`/`port`/`state` 세 파라미터를 이름·형식 그대로 쓰고
  * `kind=cli` 하나만 더한다.
  *
- * 서버 쪽에 아직 없는 것 — ARTEL-780 이 짓지 않는 범위다:
- * 1. artel-home 의 `sdkLoginRequest.ts` 가 `kind` 를 받아 `createSdkLoginCode` 로 넘기는 것.
- *    지금 relay page 는 모르는 query 파라미터를 그냥 버린다.
- * 2. `SdkLoginCodeStore` 의 value 가 `"$userId:$codeChallenge"` 라는 `:` 결합 문자열이라
- *    `kind` 를 같이 담으려면 JSON 값으로 바뀌어야 하는 것.
- * 3. `POST /api/auth/cli-tokens/exchange` endpoint 자체.
+ * 왕복의 세 조각이 모두 있다. artel-home 의 `sdkLoginRequest.ts` 가 `kind` 를 읽어
+ * `createSdkLoginCode` 로 넘기고, 서버의 `SdkLoginCodeStore` 가 그 종류를 코드와 함께 들고,
+ * `POST /api/auth/cli-tokens/exchange` 가 그 코드를 `cli_token` 행으로 바꾼다.
  *
- * 그래서 이 flow 는 실제 서버를 상대로는 아직 끝까지 가지 못한다. 3번이 없을 때 무엇을
- * 말할지는 `http/client.ts` 의 404 처리에 적혀 있다.
+ * 그래도 `http/client.ts` 가 404 를 따로 다루는 이유는 배포마다 다르기 때문이다 — 이 CLI 는
+ * 자기가 가리키는 서버가 어느 버전인지 모른다.
  */
 export const RELAY_PATH = '/sdk-login';
 

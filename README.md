@@ -2,13 +2,14 @@
 
 The command line interface for the ARTEL platform.
 
-> Early work. `artel auth status`, `artel auth logout`, the whole `artel qa`
-> group, `artel game start` and `artel game logout` work today, and
-> `ARTEL_TOKEN` is the credential path CI should use. `artel auth login` is
-> built against a `POST /api/auth/cli-tokens/exchange` endpoint the
-> orchestration server does not have yet, and `artel game start`/`artel game
-> logout` are built against a not-yet-settled SDK token mint endpoint — both
-> fail, saying exactly that, until the server side lands.
+> Early work, but the server side every command needs is in place. The two
+> endpoints this README used to call missing — `POST /api/auth/cli-tokens/exchange`
+> behind `artel auth login`, and `POST /api/auth/sdk-tokens` behind
+> `artel game start` — both exist in the orchestration server. Against a
+> deployment older than either, the command still fails saying exactly which
+> endpoint that server does not have, so pointing at an old host is not a
+> mystery. `ARTEL_TOKEN` remains the credential path CI should use: it needs no
+> browser.
 
 ## What it is for
 

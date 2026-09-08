@@ -92,7 +92,7 @@ describe('CLI token exchange', () => {
    * 이 endpoint 는 아직 서버에 없다. 404 를 일반적인 `server_error` 로 뭉개면 사용자는
    * 자기 설정이 잘못된 줄 안다.
    */
-  it('says the server does not support CLI login yet when the endpoint answers 404', async () => {
+  it('names the missing endpoint when the server answers 404', async () => {
     const stub = await startStub((_request, response) => {
       response.writeHead(404, { 'content-type': 'application/json' });
       response.end('{"code":"not_found","message":"No handler"}');
@@ -103,7 +103,8 @@ describe('CLI token exchange', () => {
     )) as CliError;
 
     expect(failure.code).toBe('login_not_supported');
-    expect(failure.message).toContain('does not support CLI login yet');
+    expect(failure.message).toContain('has no');
+    expect(failure.message).toContain('older than it');
     expect(failure.message).toContain(CLI_TOKEN_EXCHANGE_PATH);
     expect(failure.message).toContain('ARTEL_TOKEN');
   });
