@@ -91,6 +91,103 @@ export async function startContentMapScan(
  * 설명이지 header 를 거절한다는 뜻이 아니다. `SecurityConfig` 의 bearer token converter 가
  * `Authorization` 을 먼저 보고 없을 때만 cookie 로 떨어지므로, CLI 의 Bearer token 이 통한다.
  */
+/** `ContentMapSummaryResponse`. `ingestedAt` 이 `null` 이면 등록만 되고 아직 앉지 않았다. */
+export interface ContentMapSummary {
+  id: string;
+  ingestedAt: string | null;
+}
+
+/**
+ * `ContentMapResponse` 에서 CLI 가 요약에 쓰는 부분.
+ *
+ * `contentMap` 이 `null` 인 것과 `contentMap.ingestedAt` 이 `null` 인 것은 다른 상태다. 앞은
+ * 등록된 `evidence` 문서가 없는 것이고, 뒤는 등록은 됐는데 아직 지도에 앉지 않은 것이다. 둘을
+ * 같은 "없음" 으로 그리면 다음에 할 일이 달라지는 두 상황을 한 문장으로 덮는다.
+ */
+export interface ContentMapView {
+  contentMap: ContentMapSummary | null;
+  sceneCount: number;
+  edgeCount: number;
+  screenTransitionCount: number;
+  gapCount: number;
+  pendingDocumentCount: number;
+  verifiedFeatures: number;
+  totalFeatures: number;
+  lastScan: ContentMapScanStatus | null;
+}
+
+/**
+ * 이 빌드의 content map 을 읽는다.
+ *
+ * 지도가 없어도 200 이다. 빌드는 있고 접근도 되며, 없는 것은 아직 아무도 올리지 않은 문서다 —
+ * 서버가 그것을 404 로 두지 않는 이유가 DTO 주석에 적혀 있다.
+ */
+export async function readContentMap(
+  apiBaseUrl: string,
+  cliToken: string,
+  projectId: string,
+  gameBuildId: string,
+  fetchImpl?: FetchLike,
+): Promise<ContentMapView> {
+  const endpoint = `${apiBaseUrl}${contentMapPath(projectId, gameBuildId)}`;
+  const body = await requestJson({
+    method: 'GET',
+    endpoint,
+    cliToken,
+    ...(fetchImpl === undefined ? {} : { fetchImpl }),
+    onFailure: (failure) =>
+      failure.status === 404
+        ? new CliError(
+            'content_map_build_not_found',
+            `There is no game build ${gameBuildId} under project ${projectId}, or you cannot see it.`,
+          )
+        : null,
+  });
+
+  const view = asObject(body, 'body', endpoint);
+  const verification = readVerification(view['verification']);
+  return {
+    contentMap: readSummary(view['contentMap']),
+    sceneCount: countOf(view['scenes']),
+    edgeCount: countOf(view['edges']),
+    screenTransitionCount: countOf(view['screenTransitions']),
+    gapCount: countOf(view['gaps']),
+    pendingDocumentCount: countOf(view['pendingDocuments']),
+    verifiedFeatures: verification.verified,
+    totalFeatures: verification.total,
+    lastScan: readOptionalScanStatus(view['lastScan']),
+  };
+}
+
+/** 배열이 아니면 0 이다. 세는 값 하나 때문에 지도 전체를 못 읽는 것으로 만들지 않는다. */
+function countOf(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function readSummary(value: unknown): ContentMapSummary | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const summary = value as Record<string, unknown>;
+  const id = summary['id'];
+  if (typeof id !== 'string') {
+    return null;
+  }
+  const ingestedAt = summary['ingestedAt'];
+  return { id, ingestedAt: typeof ingestedAt === 'string' ? ingestedAt : null };
+}
+
+function readVerification(value: unknown): { verified: number; total: number } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return { verified: 0, total: 0 };
+  }
+  const verification = value as Record<string, unknown>;
+  return {
+    verified: typeof verification['verified'] === 'number' ? verification['verified'] : 0,
+    total: typeof verification['total'] === 'number' ? verification['total'] : 0,
+  };
+}
+
 export async function openContentMapEvents(
   apiBaseUrl: string,
   cliToken: string,

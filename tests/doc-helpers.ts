@@ -44,6 +44,8 @@ export interface FakeDocServerOptions {
   registerFailure?: { status: number; body: string };
   /** 등록 응답의 `parseStatus`. 기본은 `PENDING` 이다. */
   registeredParseStatus?: string;
+  /** `GET .../content-map` 이 답할 본문. 없으면 지도가 없는 응답을 낸다. */
+  contentMap?: unknown;
   /** `POST .../content-map/scan` 이 답할 status. 기본은 202. */
   scanStatus?: number;
   /** 202 가 아닐 때 실을 body. */
@@ -196,6 +198,29 @@ export async function startFakeDocServer(
           }),
         );
       });
+      return;
+    }
+
+    // `GET .../content-map`. `scan` 과 `events` 보다 뒤에 두면 안 된다 — 접두사가 같아서
+    // 앞의 두 정규식이 먼저 걸러 주어야 이 자리에서 정확히 조회만 남는다.
+    const contentMapReadMatch =
+      /^\/api\/projects\/([^/]+)\/game-builds\/([^/]+)\/content-map$/.exec(url.pathname);
+    if (request.method === 'GET' && contentMapReadMatch !== null) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify(
+          options.contentMap ?? {
+            contentMap: null,
+            scenes: [],
+            edges: [],
+            screenTransitions: [],
+            gaps: [],
+            verification: { verified: 0, total: 0 },
+            pendingDocuments: [],
+            lastScan: null,
+          },
+        ),
+      );
       return;
     }
 

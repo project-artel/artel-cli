@@ -397,6 +397,32 @@ export interface QaLabelsPayload {
  * `nextBeforeId` 와 `hasMore` 를 그대로 싣는다. 커서를 감추면 받은 것이 전부인지 잘린 것인지
  * 읽는 쪽이 알 수 없고, 없는 이슈를 없다고 읽는다.
  */
+/**
+ * `map show --json`. 지도 전체가 아니라 세는 값들이다 — 씬과 기능 원문은 콘솔이 그린다.
+ *
+ * `contentMapId` 가 `null` 인 것과 `ingestedAt` 이 `null` 인 것은 다른 상태다. 앞은 등록된
+ * `evidence` 문서가 없는 것이고, 뒤는 등록은 됐는데 아직 앉지 않은 것이다.
+ *
+ * `lastScanState` 가 `null` 이면 서버가 뜬 뒤로 이 빌드에 스캔을 시킨 적이 없다는 뜻이지,
+ * 지도가 스캔 없이 생겼다는 뜻이 아니다.
+ */
+export interface ContentMapViewPayload {
+  projectId: string;
+  gameBuildId: string;
+  contentMapId: string | null;
+  ingestedAt: string | null;
+  scenes: number;
+  edges: number;
+  screenTransitions: number;
+  gaps: number;
+  pendingDocuments: number;
+  verifiedFeatures: number;
+  totalFeatures: number;
+  lastScanState: string | null;
+  lastScanFinishedAt: string | null;
+  lastScanError: string | null;
+}
+
 export interface IssueListPayload {
   items: IssuePayload[];
   nextBeforeId: string | null;

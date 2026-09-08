@@ -183,6 +183,30 @@ every rate the human table prints is derived from those sums with its
 denominator shown next to it. A cell whose axes are unknown (a run from before
 the server recorded them) never matches a selector that names an axis.
 
+## Reading the content map an arm ran against
+
+`--content-map-mode` is an axis `artel qa run` and `artel qa matrix` measure, so
+when the arm that had the map on did worse, the next question is whether the map
+was empty or wrong. **`artel map show --project <id> --build <id>`** answers the
+first half: how many scenes, scene edges, screen transitions and spec gaps the
+map holds, how many `evidence` features have been confirmed by a run, and what
+the last scan did.
+
+It distinguishes two kinds of nothing, because they need different next steps: a
+build with no `evidence` document registered at all, and one whose document is
+registered but has not been ingested into the map yet. `last scan` reads
+`none since the server started` when nothing has asked this build to scan since
+the server came up — that is not the same as the map having appeared without a
+scan.
+
+`--watch` follows the scan and ingest stream before reading. It follows a scan
+someone else started; **`artel doc scan` is what starts one.** The server never
+ends that stream on its own, so `--timeout` caps the wait.
+
+Regenerating test cases from the map is not here. That endpoint lives under
+`/internal/`, which is the server-to-server trust boundary — it carries no
+per-user access check, so a user tool must not call it.
+
 ## Reading what a run found
 
 A QA run produces two things: a verdict, and the defects it found on the way.

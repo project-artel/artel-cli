@@ -16,6 +16,7 @@ import { runGameList } from './commands/game/list.js';
 import { runGameLogout } from './commands/game/logout.js';
 import { runGameStart } from './commands/game/start.js';
 import { runIssueList } from './commands/issue/list.js';
+import { runMapShow } from './commands/map/show.js';
 import { runIssueStatusChange } from './commands/issue/status.js';
 import { runProjectList } from './commands/project/list.js';
 import { runQaCancel } from './commands/qa/cancel.js';
@@ -1421,6 +1422,54 @@ export async function runCli(
         env,
       );
     });
+
+  const map = program
+    .command('map')
+    .description(
+      'Read the content map a build has. "artel doc scan" is what fills it; this reads what is there',
+    );
+
+  map
+    .command('show')
+    .description("Summarise a build's content map: scenes, transitions, gaps, and the last scan")
+    .requiredOption('--project <id>', 'project the game build belongs to')
+    .requiredOption('--build <id>', 'game build whose content map to read')
+    .option(
+      '--watch',
+      'follow the scan and ingest progress before reading. It follows a scan someone else started; it does not start one',
+      false,
+    )
+    .option(
+      '--timeout <seconds>',
+      'seconds to keep watching; 0 waits with no limit. The server never ends this stream on its own',
+      String(DEFAULT_DOC_TIMEOUT_SECONDS),
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (options: {
+        project: string;
+        build: string;
+        watch: boolean;
+        timeout: string;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runMapShow(
+          {
+            json: options.json,
+            project: options.project,
+            build: options.build,
+            watch: options.watch,
+            timeoutSeconds: parseTimeoutSeconds(options.timeout),
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
 
   const doc = program
     .command('doc')
