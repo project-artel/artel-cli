@@ -1,9 +1,12 @@
+import fs from 'node:fs/promises';
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runQaMatrix } from '../src/commands/qa/matrix.js';
 import { runQaRun } from '../src/commands/qa/run.js';
 import type { GameProcessSpawner } from '../src/game/process.js';
 import type { GameStartDeps } from '../src/game/start-flow.js';
+import type { CliError } from '../src/errors.js';
 import type { QaMatrixPayload } from '../src/output/contract.js';
 import { assignToSlots, expandCombinations, type MatrixAxes } from '../src/qa/matrix.js';
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, runCli } from '../src/run.js';
@@ -350,6 +353,7 @@ describe('runQaMatrix', () => {
       contentMapModes: ['off', 'frozen'],
       knowledgeModes: [null],
       repeats: 1,
+      resume: false,
       slots: [BUILD_A, BUILD_B],
       width: 1280,
       height: 720,
@@ -401,6 +405,121 @@ describe('runQaMatrix', () => {
     expect(payload.combinations.every((combination) => combination.stepsTotal === 3)).toBe(true);
     expect(payload.total).toBe(4);
     expect(payload.succeeded).toBe(4);
+  });
+
+  /**
+   * 한 조합이 몇 분씩 걸린다. 중간에 죽으면 그때까지 끝난 런의 판정도 함께 사라지는 것이 이
+   * 기능이 푸는 문제다.
+   */
+  it('appends each finished run to --out as it finishes', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const out = `${temp.root}/matrix.jsonl`;
+
+    await runQaMatrix(
+      { ...baseOptions(), testRunIds: ['1'], contentMapModes: ['off', 'frozen'], out },
+      createMemorySink(),
+      matrixEnv(),
+      makeStartDeps(),
+    );
+
+    const lines = (await fs.readFile(out, 'utf8')).trimEnd().split('\n');
+    expect(lines).toHaveLength(2);
+    expect(
+      lines.map((line) => (JSON.parse(line) as { contentMapMode: string }).contentMapMode),
+    ).toEqual(expect.arrayContaining(['off', 'frozen']));
+  });
+
+  it('skips the runs already in the journal and launches no game for them', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const out = `${temp.root}/matrix.jsonl`;
+    const options = {
+      ...baseOptions(),
+      testRunIds: ['1'],
+      contentMapModes: ['off', 'frozen'],
+      out,
+    };
+
+    await runQaMatrix(options, createMemorySink(), matrixEnv(), makeStartDeps());
+    await api.close();
+
+    // 두 번째 서버는 launch 를 하나도 받지 않아야 한다.
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const sink = createMemorySink();
+    const code = await runQaMatrix(
+      { ...options, resume: true },
+      sink,
+      matrixEnv(),
+      makeStartDeps(),
+    );
+
+    expect(api.timeline).toEqual([]);
+    expect(code).toBe(EXIT_OK);
+    const payload = sink.lastJson<QaMatrixPayload>();
+    expect(payload.total).toBe(2);
+    expect(payload.succeeded).toBe(2);
+  });
+
+  /** 이어 돌린 것과 처음부터 돈 것의 최종 결과가 같아야 한다. */
+  it('reports the same payload whether it resumed or ran the whole way', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const options = {
+      ...baseOptions(),
+      testRunIds: ['1'],
+      contentMapModes: ['off', 'frozen'],
+    };
+
+    const fresh = createMemorySink();
+    await runQaMatrix(options, fresh, matrixEnv(), makeStartDeps());
+    await api.close();
+
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const out = `${temp.root}/matrix.jsonl`;
+    await runQaMatrix({ ...options, out }, createMemorySink(), matrixEnv(), makeStartDeps());
+    const resumed = createMemorySink();
+    await runQaMatrix({ ...options, out, resume: true }, resumed, matrixEnv(), makeStartDeps());
+
+    const a = fresh.lastJson<QaMatrixPayload>();
+    const b = resumed.lastJson<QaMatrixPayload>();
+    expect(b.combinations.map((c) => [c.index, c.contentMapMode, c.verdict])).toEqual(
+      a.combinations.map((c) => [c.index, c.contentMapMode, c.verdict]),
+    );
+  });
+
+  /** 다른 실험의 파일에 이어 쓰면 한 표에 두 실험이 섞인다. 게임을 띄우기 전에 멈춰야 한다. */
+  it('refuses a journal from a different set of axes before launching anything', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const out = `${temp.root}/matrix.jsonl`;
+
+    await runQaMatrix(
+      { ...baseOptions(), testRunIds: ['1'], contentMapModes: ['frozen'], out },
+      createMemorySink(),
+      matrixEnv(),
+      makeStartDeps(),
+    );
+    await api.close();
+
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const failure = (await runQaMatrix(
+      { ...baseOptions(), testRunIds: ['1'], contentMapModes: ['off'], out, resume: true },
+      createMemorySink(),
+      matrixEnv(),
+      makeStartDeps(),
+    ).catch((error: unknown) => error)) as CliError;
+
+    expect(failure.code).toBe('matrix_journal_mismatch');
+    expect(api.timeline).toEqual([]);
+  });
+
+  it('refuses --resume without --out through the CLI', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+
+    const code = await runCli(
+      ['qa', 'matrix', '--project', '42', '--test-run', '1', '--slot', BUILD_A, '--resume'],
+      createMemorySink(),
+      matrixEnv(),
+    );
+
+    expect(code).toBe(EXIT_USAGE);
   });
 
   it('emits exactly its contracted keys', async () => {

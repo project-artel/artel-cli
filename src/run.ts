@@ -518,6 +518,15 @@ export async function runCli(
       '1',
     )
     .option(
+      '--out <path>',
+      'append each finished run to this file as one JSON line, the moment it finishes. A matrix that dies partway leaves everything before that point readable',
+    )
+    .option(
+      '--resume',
+      'skip the runs already in --out and keep the rest. It takes no path of its own: reading one file and writing another would be a state nobody can say the meaning of',
+      false,
+    )
+    .option(
       '--reasoning-max-tokens <n>',
       'reasoning token budget for every combination. Not an axis: it is the budget under a model and an effort, so multiplying it against those two produces combinations that do not go together',
     )
@@ -561,6 +570,8 @@ export async function runCli(
         promptVersion?: string | undefined;
         reasoningEffort?: string | undefined;
         repeat: string;
+        out?: string | undefined;
+        resume: boolean;
         reasoningMaxTokens?: string | undefined;
         arch?: string | undefined;
         contentMapMode?: string | undefined;
@@ -575,6 +586,10 @@ export async function runCli(
         consoleUrl?: string | undefined;
       }) => {
         json = options.json;
+        // 읽을 파일이 곧 쓸 파일이다. `--out` 이 없으면 `--resume` 은 가리킬 것이 없다.
+        if (options.resume && options.out === undefined) {
+          throw new UsageError('--resume needs --out: it resumes the file --out writes.');
+        }
         exitCode = await runQaMatrix(
           {
             json: options.json,
@@ -596,6 +611,8 @@ export async function runCli(
                 ? [null]
                 : parseAxisList(options.reasoningEffort, '--reasoning-effort'),
             repeats: parsePositiveInt(options.repeat, '--repeat'),
+            out: options.out,
+            resume: options.resume,
             // 축이 아니라 전 조합에 걸리는 고정값이다. 이유는 `--help` 에 적혀 있다.
             ...(options.reasoningMaxTokens === undefined
               ? {}

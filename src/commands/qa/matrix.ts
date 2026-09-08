@@ -14,6 +14,13 @@ import type { QaMatrixCombinationPayload, QaMatrixPayload } from '../../output/c
 import { writeJsonPayload, type OutputSink } from '../../output/envelope.js';
 import { describeFollowEvent, printQaMatrix } from '../../output/human.js';
 import { readArch } from '../../qa/arch.js';
+import {
+  appendRun,
+  keyOfCombination,
+  readJournal,
+  rejectForeignRuns,
+  runKey,
+} from '../../qa/journal.js';
 import type { QaContext } from '../../qa/context.js';
 import type { QaFollowEvent } from '../../qa/follow.js';
 import {
@@ -50,6 +57,10 @@ export interface QaMatrixCommandOptions {
    * arm 때문인지 그날의 운인지 구분할 수 없다.
    */
   repeats: number;
+  /** `--out`. 런이 끝날 때마다 여기에 한 줄씩 붙인다. */
+  out?: string | undefined;
+  /** `--resume`. [out] 에 이미 있는 런을 건너뛴다. */
+  resume: boolean;
   /** `--arch` 의 원문. JSON object 이거나 `@경로`. */
   arch?: string | undefined;
   label?: string | undefined;
@@ -138,6 +149,19 @@ export async function runQaMatrix(
   // 슬롯당 대기열 길이까지 말한다. 축이 다섯이 되면서 조합 수가 곱으로 늘어나고, 슬롯 하나가
   // 몇 개를 차례로 돌아야 하는지가 이 명령이 몇 시간짜리인지를 정한다 — 시작하기 전에 그것을
   // 보고 그만둘 수 있어야 한다.
+  // 이어 돌릴 것을 먼저 읽는다. 축이 어긋나면 게임을 하나도 띄우기 전에 멈춰야 한다.
+  const done = new Map<string, QaMatrixCombinationPayload>();
+  if (options.resume && options.out !== undefined) {
+    const journal = await readJournal(options.out);
+    rejectForeignRuns(options.out, journal, combinations);
+    for (const run of journal) {
+      done.set(runKey(run), run);
+    }
+    if (done.size > 0) {
+      sink.err(`Resuming: ${String(done.size)} run(s) already in ${options.out}.`);
+    }
+  }
+
   const longestQueue = Math.max(...slots.map((assigned) => assigned.length));
   const runs =
     options.repeats === 1
@@ -160,6 +184,7 @@ export async function runQaMatrix(
       runSlot(assigned, slot, total, options, context, config.consoleBaseUrl, env, sink, results, {
         makeStartDeps,
         launchGate,
+        done,
         ...(arch === undefined ? {} : { arch }),
         ...(fetchImpl === undefined ? {} : { fetchImpl }),
       }),
@@ -192,6 +217,8 @@ export async function runQaMatrix(
 interface SlotDeps {
   makeStartDeps: (notify: (message: string) => void) => GameStartDeps;
   fetchImpl?: FetchLike | undefined;
+  /** `--resume` 이 읽어 둔, 이미 끝난 런. 열쇠는 축 값과 반복 번호다. */
+  done: ReadonlyMap<string, QaMatrixCombinationPayload>;
   /**
    * `--arch` 를 읽어 둔 값. 조합마다 다시 읽지 않는다 — 파일을 매번 읽으면 matrix 가 도는
    * 중에 그 파일이 바뀌었을 때 앞뒤 조합이 다른 구조로 돌고, 그 차이는 결과 어디에도 안 남는다.
@@ -243,7 +270,18 @@ async function runSlot(
   }
 
   for (const combination of assigned) {
-    results[combination.index] = await runCombination(
+    // 이미 끝난 런은 게임을 띄우지 않고 파일에서 읽은 결과를 그대로 쓴다. 다시 돌리면 서버에
+    // 같은 설정의 런이 둘 생기고, 그 둘 중 어느 것이 표에 들어갔는지 알 수 없게 된다.
+    const already = deps.done.get(keyOfCombination(combination));
+    if (already !== undefined) {
+      sink.err(
+        `[slot ${String(slot)}] run ${String(combination.index + 1)}/${String(total)}: already in the journal (run ${already.qaRunId ?? '-'}), skipping.`,
+      );
+      results[combination.index] = already;
+      continue;
+    }
+
+    const result = await runCombination(
       combination,
       slot,
       total,
@@ -255,6 +293,12 @@ async function runSlot(
       sink,
       deps,
     );
+    results[combination.index] = result;
+
+    // 런이 끝난 직후에 적는다. 모아 두었다가 끝에 쓰면 이 기능이 푸는 문제가 그대로 남는다.
+    if (options.out !== undefined) {
+      await appendRun(options.out, result);
+    }
   }
 }
 

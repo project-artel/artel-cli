@@ -255,6 +255,23 @@ before and against after, and two launches registering at the same moment land i
 the same diff. Registration takes seconds and a run takes minutes, so the wait
 costs almost nothing.
 
+**`--out <path>` writes each finished run to a file the moment it finishes,** one
+JSON object per line. A matrix that dies at run 7 of 12 leaves the first 6
+readable; without it those verdicts existed only in output that is now gone.
+`--resume` then skips the runs already in that file and runs the rest, and the
+final result is the same shape either way.
+
+`--resume` takes no path of its own — it resumes the file `--out` writes.
+Reading one file while writing another would be a state nobody can say the
+meaning of.
+
+A run is recognised by its axis values and its repeat number, not by where it sat
+in the expansion order. Add one `--model` and every combination's position
+shifts, so a position-based key would make `--resume` skip a run that never
+happened. If the file holds a run the current axes would never produce, the
+command stops before launching anything: resuming onto another experiment's file
+would put two experiments in one table.
+
 **One failed combination does not stop the others.** The failure is recorded
 against that combination, the slot moves on to its next one, and the summary
 lists what failed and why. The exit code is `0` only when every combination
