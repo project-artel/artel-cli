@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { writeCredential } from '../src/credentials/store.js';
+import { CREDENTIAL_FILE_VERSION } from '../src/credentials/types.js';
+
 import { runGameStart } from '../src/commands/game/start.js';
 import type { CliError } from '../src/errors.js';
 import type { GameInstance } from '../src/http/gameInstances.js';
@@ -264,6 +267,22 @@ describe('artel game start (command layer)', () => {
   });
 
   it('refuses a loopback API paired with the default production console', async () => {
+    // 자격증명을 먼저 심는다. 이 명령은 자격증명을 읽은 다음 주소를 정하므로(파일에 적힌
+    // `apiBaseUrl` 이 주소의 마지막 후보다), 서명하지 않은 상태로는 `no_credential` 이 먼저
+    // 걸려 이 테스트가 보려는 pairing 규칙까지 가지 못한다.
+    await writeCredential(
+      {
+        version: CREDENTIAL_FILE_VERSION,
+        token: 'artel_stored',
+        tokenId: '01JXSTORED',
+        tokenName: 'artel-cli@laptop',
+        createdAt: '2026-09-03T04:11:07Z',
+        expiresAt: null,
+        apiBaseUrl: 'https://api.example.test',
+      },
+      { ARTEL_CONFIG_DIR: temp.configDir },
+    );
+
     const sink = createMemorySink();
     const failure = (await runGameStart(
       {
@@ -276,6 +295,8 @@ describe('artel game start (command layer)', () => {
         timeoutSeconds: 5,
       },
       sink,
+      // `ARTEL_API_BASE_URL` 이 파일의 주소를 이긴다. 이 테스트가 보려는 것은 loopback API 와
+      // 기본 console 의 짝이므로 loopback 쪽이 이겨야 한다.
       { ARTEL_CONFIG_DIR: temp.configDir, ARTEL_API_BASE_URL: 'http://localhost:8080' },
     ).catch((error: unknown) => error)) as CliError;
 

@@ -33,16 +33,13 @@ export async function runGameStart(
   makeDeps: (notify: (message: string) => void) => GameStartDeps = (notify) =>
     defaultGameStartDeps(notify, env),
 ): Promise<void> {
-  const config = resolveConfig(env, {
-    apiBaseUrl: options.apiUrl,
-    consoleBaseUrl: options.consoleUrl,
-  });
 
   // 진행 상황은 stderr 로 간다. `--json` 을 켠 쪽의 stdout 에는 payload 한 줄만 남아야 한다.
   const notify = (message: string): void => {
     sink.err(message);
   };
 
+  // 자격증명을 먼저 읽는다. 파일에 적힌 `apiBaseUrl` 이 주소의 마지막 후보다.
   const resolution = await resolveCredential(env);
   if (resolution.credential === null) {
     throw new CliError(
@@ -50,6 +47,12 @@ export async function runGameStart(
       'Not signed in. Run "artel auth login" first, or set ARTEL_TOKEN.',
     );
   }
+
+  const config = resolveConfig(
+    env,
+    { apiBaseUrl: options.apiUrl, consoleBaseUrl: options.consoleUrl },
+    resolution.credential.stored?.apiBaseUrl ?? null,
+  );
 
   const result = await runGameStartFlow(
     {

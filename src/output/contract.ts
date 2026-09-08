@@ -1,3 +1,4 @@
+import type { ApiBaseUrlSource } from '../config.js';
 import type { ErrorCode } from '../errors.js';
 
 /**
@@ -34,7 +35,16 @@ export interface StatusPayload {
   tokenId: string | null;
   tokenName: string | null;
   expiresAt: string | null;
+  /**
+   * 명령이 실제로 부를 주소. `ARTEL_API_BASE_URL` 이 있으면 그것이고, 없으면 자격증명 파일에
+   * 적힌 값이다. 둘 다 없으면 `null` 이다.
+   *
+   * 파일에 적힌 값만 내던 자리였다. 환경 변수가 이기는 상황에서 그대로 두면 status 가 말한
+   * 주소와 명령이 부르는 주소가 달라진다.
+   */
   apiBaseUrl: string | null;
+  /** 위 값이 어디서 왔는지. `--api-url` 은 `auth status` 에 없으므로 `flag` 는 나오지 않는다. */
+  apiBaseUrlSource: ApiBaseUrlSource | null;
 }
 
 export interface LogoutPayload {

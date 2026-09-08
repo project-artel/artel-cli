@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveApiBaseUrl, resolveConfig, resolveConsoleBaseUrl } from '../src/config.js';
+import {
+  effectiveApiBaseUrl,
+  resolveApiBaseUrl,
+  resolveConfig,
+  resolveConsoleBaseUrl,
+} from '../src/config.js';
 import type { CliError } from '../src/errors.js';
 
 describe('resolveApiBaseUrl', () => {
@@ -26,6 +31,63 @@ describe('resolveApiBaseUrl', () => {
     );
   });
 
+  it('falls back to the address the credentials file was written with', () => {
+    expect(resolveApiBaseUrl({}, undefined, 'https://stored.example.test')).toBe(
+      'https://stored.example.test',
+    );
+  });
+
+  it('lets ARTEL_API_BASE_URL win over the stored address', () => {
+    expect(
+      resolveApiBaseUrl(
+        { ARTEL_API_BASE_URL: 'https://env.example.test' },
+        undefined,
+        'https://stored.example.test',
+      ),
+    ).toBe('https://env.example.test');
+  });
+
+  it('lets --api-url win over both', () => {
+    expect(
+      resolveApiBaseUrl(
+        { ARTEL_API_BASE_URL: 'https://env.example.test' },
+        'https://flag.example.test',
+        'https://stored.example.test',
+      ),
+    ).toBe('https://flag.example.test');
+  });
+
+  /**
+   * `ARTEL_TOKEN` 으로 인증한 쪽이 `null` 을 넘긴다. 그 경로가 실제로 주소 없이 끝나는지
+   * 본다 — 빈 문자열이나 공백만 든 값을 값으로 읽으면 CI 가 엉뚱한 곳에 붙는다.
+   */
+  it('treats a blank stored address as absent', () => {
+    const failure = (() => {
+      try {
+        resolveApiBaseUrl({}, undefined, '   ');
+        return null;
+      } catch (error) {
+        return error as CliError;
+      }
+    })();
+
+    expect(failure?.code).toBe('missing_api_base_url');
+  });
+
+  it('names the credentials file when the stored address is malformed', () => {
+    const failure = (() => {
+      try {
+        resolveApiBaseUrl({}, undefined, 'not-a-url');
+        return null;
+      } catch (error) {
+        return error as CliError;
+      }
+    })();
+
+    expect(failure?.code).toBe('invalid_base_url');
+    expect(failure?.message).toContain('credentials file');
+  });
+
   it('still refuses when neither --api-url nor the environment variable is set', () => {
     const failure = (() => {
       try {
@@ -39,6 +101,19 @@ describe('resolveApiBaseUrl', () => {
     expect(failure?.code).toBe('missing_api_base_url');
     expect(failure?.message).toContain('--api-url');
     expect(failure?.message).toContain('ARTEL_API_BASE_URL');
+  });
+
+  it('points at "artel auth login" when nothing supplies an address', () => {
+    const failure = (() => {
+      try {
+        resolveApiBaseUrl({});
+        return null;
+      } catch (error) {
+        return error as CliError;
+      }
+    })();
+
+    expect(failure?.message).toContain('artel auth login');
   });
 
   it('rejects a malformed --api-url instead of failing later as a network error', () => {
@@ -174,5 +249,35 @@ describe('resolveConfig', () => {
       apiBaseUrl: 'https://env-api.example.test',
       consoleBaseUrl: 'https://env-console.example.test',
     });
+  });
+});
+
+describe('effectiveApiBaseUrl', () => {
+  it('names the environment variable as the source', () => {
+    expect(
+      effectiveApiBaseUrl({ ARTEL_API_BASE_URL: 'https://env.example.test/' }, null),
+    ).toEqual({ value: 'https://env.example.test', source: 'env' });
+  });
+
+  it('names the credentials file as the source', () => {
+    expect(effectiveApiBaseUrl({}, 'https://stored.example.test/')).toEqual({
+      value: 'https://stored.example.test',
+      source: 'file',
+    });
+  });
+
+  /**
+   * 값이 URL 로 말이 되는지는 보지 않는다. `auth status` 가 이것을 부르고, 보고하는 명령이
+   * 값이 이상하다는 이유로 죽으면 안 된다.
+   */
+  it('reports a malformed value rather than throwing', () => {
+    expect(effectiveApiBaseUrl({ ARTEL_API_BASE_URL: 'not-a-url' }, null)).toEqual({
+      value: 'not-a-url',
+      source: 'env',
+    });
+  });
+
+  it('has no source when nothing supplies an address', () => {
+    expect(effectiveApiBaseUrl({}, null)).toEqual({ value: null, source: null });
   });
 });

@@ -30,15 +30,12 @@ export async function runGameLogout(
   makeDeps: (notify: (message: string) => void) => GameLogoutDeps = (notify) =>
     defaultGameLogoutDeps(notify, env),
 ): Promise<void> {
-  const config = resolveConfig(env, {
-    apiBaseUrl: options.apiUrl,
-    consoleBaseUrl: options.consoleUrl,
-  });
 
   const notify = (message: string): void => {
     sink.err(message);
   };
 
+  // 자격증명을 먼저 읽는다. 파일에 적힌 `apiBaseUrl` 이 주소의 마지막 후보다.
   const resolution = await resolveCredential(env);
   if (resolution.credential === null) {
     throw new CliError(
@@ -46,6 +43,12 @@ export async function runGameLogout(
       'Not signed in. Run "artel auth login" first, or set ARTEL_TOKEN.',
     );
   }
+
+  const config = resolveConfig(
+    env,
+    { apiBaseUrl: options.apiUrl, consoleBaseUrl: options.consoleUrl },
+    resolution.credential.stored?.apiBaseUrl ?? null,
+  );
 
   const result = await runGameLogoutFlow(
     {
