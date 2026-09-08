@@ -313,6 +313,46 @@ export interface TestCaseDetailPayload extends TestCasePayload {
 }
 
 /** `case list --json`. `TestCaseListResponse` 와 같은 모양이다. */
+/**
+ * `project list --json`. 서버가 페이지로 답하므로 `page`·`size`·`total` 을 그대로 싣는다 —
+ * `items` 만 내면 받은 것이 전부인지 잘린 것인지 읽는 쪽이 알 수 없다.
+ */
+export interface ProjectListPayload {
+  items: ProjectPayload[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+export interface ProjectPayload {
+  id: string;
+  name: string;
+  genre: string;
+  description: string | null;
+  /** 이 프로젝트에서 부르는 사람의 역할. */
+  myRole: string;
+  updatedAt: string;
+}
+
+/**
+ * `game list --json`. 이 endpoint 는 페이지를 나누지 않으므로 봉투에 개수만 담는다.
+ */
+export interface GameInstanceListPayload {
+  items: GameInstancePayload[];
+}
+
+export interface GameInstancePayload {
+  id: string;
+  projectId: string;
+  name: string;
+  platform: string;
+  /** 지금 SDK 가 붙어 있는지. `qa run --instance` 는 붙어 있는 것에만 걸린다. */
+  connected: boolean;
+  lastConnectedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CaseListPayload {
   items: TestCasePayload[];
 }

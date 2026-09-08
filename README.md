@@ -8,8 +8,7 @@ The command line interface for the ARTEL platform.
 > built against a `POST /api/auth/cli-tokens/exchange` endpoint the
 > orchestration server does not have yet, and `artel game start`/`artel game
 > logout` are built against a not-yet-settled SDK token mint endpoint — both
-> fail, saying exactly that, until the server side lands. `artel projects list`
-> below is the shape being built toward.
+> fail, saying exactly that, until the server side lands.
 
 ## What it is for
 
@@ -18,8 +17,9 @@ the console in a browser.
 
 ```
 artel auth login
-artel projects list
+artel project list
 artel game start --build ./Build/Game.exe --project <id>
+artel game list --project <id>
 artel qa run --test-run <id> --instance <id>
 artel qa watch <run id>
 artel qa show <run id>
@@ -62,6 +62,25 @@ signed in" is a successful report, so it exits `0`.
 `artel auth logout` deletes the local file and says so. It does **not** revoke
 anything on the server — `--json` carries `"serverSideRevoked": false` to say
 that in a form a program can read. Revoke a token in the console.
+
+## Finding the ids other commands ask for
+
+Almost every command takes `--project`, and `artel qa run` takes `--instance`.
+Two commands say what those are, so neither one has to come from a browser.
+
+**`artel project list`** names the projects this credential can see, newest
+change first. The server pages this, so the output says how many of the total
+came back and which `--page` holds the rest — a list that quietly stopped at 100
+would read as "there are only 100".
+
+**`artel game list --project <id>`** names that project's game instances. It
+prints whether each one is connected right now, because that is what decides
+whether `artel qa run` can drive it; an instance that has gone offline shows when
+it was last reachable. An instance exists only after a build carrying the SDK has
+registered at least once, so an empty list usually means `artel game start` has
+not run yet rather than that something is wrong.
+
+Both are reads: an empty result is a successful report and exits `0`.
 
 ## Launching a game
 

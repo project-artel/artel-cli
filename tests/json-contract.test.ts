@@ -5,20 +5,30 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runAuthLogin } from '../src/commands/auth/login.js';
+import { runGameList } from '../src/commands/game/list.js';
 import { runDocScan } from '../src/commands/doc/scan.js';
 import { runDocUpload } from '../src/commands/doc/upload.js';
+import { runProjectList } from '../src/commands/project/list.js';
 import { enforcesFileMode, writeCredential } from '../src/credentials/store.js';
 import { CREDENTIAL_FILE_VERSION } from '../src/credentials/types.js';
 import type {
   ContentMapScanPayload,
   DocumentUploadPayload,
   ErrorEnvelope,
+  GameInstanceListPayload,
   LoginPayload,
   LogoutPayload,
+  ProjectListPayload,
   StatusPayload,
 } from '../src/output/contract.js';
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, runCli } from '../src/run.js';
 import { startFakeDocServer, type FakeDocServer } from './doc-helpers.js';
+import {
+  fakeInstance,
+  fakeProject,
+  startFakeDiscoveryServer,
+  type FakeDiscoveryServer,
+} from './discovery-helpers.js';
 import {
   callBack,
   createMemorySink,
@@ -63,6 +73,20 @@ const STATUS_KEYS = [
 ];
 
 const LOGOUT_KEYS = ['credentialsPath', 'removed', 'serverSideRevoked', 'tokenId'];
+
+const PROJECT_LIST_KEYS = ['items', 'page', 'size', 'total'];
+const PROJECT_KEYS = ['description', 'genre', 'id', 'myRole', 'name', 'updatedAt'];
+const GAME_LIST_KEYS = ['items'];
+const GAME_INSTANCE_KEYS = [
+  'connected',
+  'createdAt',
+  'id',
+  'lastConnectedAt',
+  'name',
+  'platform',
+  'projectId',
+  'updatedAt',
+];
 
 let temp: TempConfig;
 let api: FakeOrchestration;
@@ -127,6 +151,46 @@ describe('--json key sets', () => {
     const sink = createMemorySink();
     await runCli(['auth', 'logout', '--json'], sink, { ARTEL_CONFIG_DIR: temp.configDir });
     expect(Object.keys(sink.lastJson<LogoutPayload>()).sort()).toEqual(LOGOUT_KEYS);
+  });
+
+  it('project list emits exactly its contracted keys', async () => {
+    const discovery: FakeDiscoveryServer = await startFakeDiscoveryServer({
+      projects: [fakeProject()],
+    });
+    try {
+      const sink = createMemorySink();
+      await runProjectList({ json: true, page: 0, limit: 100 }, sink, {
+        ARTEL_CONFIG_DIR: temp.configDir,
+        ARTEL_API_BASE_URL: discovery.baseUrl,
+        ARTEL_TOKEN: 'artel_env_token',
+      });
+
+      const payload = sink.lastJson<ProjectListPayload>();
+      expect(Object.keys(payload).sort()).toEqual(PROJECT_LIST_KEYS);
+      expect(Object.keys(payload.items[0] ?? {}).sort()).toEqual(PROJECT_KEYS);
+    } finally {
+      await discovery.close();
+    }
+  });
+
+  it('game list emits exactly its contracted keys', async () => {
+    const discovery: FakeDiscoveryServer = await startFakeDiscoveryServer({
+      instances: [fakeInstance()],
+    });
+    try {
+      const sink = createMemorySink();
+      await runGameList({ json: true, project: '1' }, sink, {
+        ARTEL_CONFIG_DIR: temp.configDir,
+        ARTEL_API_BASE_URL: discovery.baseUrl,
+        ARTEL_TOKEN: 'artel_env_token',
+      });
+
+      const payload = sink.lastJson<GameInstanceListPayload>();
+      expect(Object.keys(payload).sort()).toEqual(GAME_LIST_KEYS);
+      expect(Object.keys(payload.items[0] ?? {}).sort()).toEqual(GAME_INSTANCE_KEYS);
+    } finally {
+      await discovery.close();
+    }
   });
 });
 
