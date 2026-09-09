@@ -21,7 +21,7 @@ export type AxisValue = string | null;
 export type ArchAxisValue = { label: string; value: unknown } | null;
 
 /**
- * 축 여섯. 전개 순서가 이 선언 순서이고, 그것이 `--help` 와 README 가 적는 순서다.
+ * 축 일곱. 전개 순서가 이 선언 순서이고, 그것이 `--help` 와 README 가 적는 순서다.
  *
  * 순서를 고정하는 것이 요점이다 — 같은 명령을 두 번 돌리면 같은 조합이 같은 번호를 받고,
  * 그래야 [assignToSlots] 의 배정도 두 번 다 같다.

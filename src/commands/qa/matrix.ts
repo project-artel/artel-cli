@@ -138,7 +138,7 @@ export async function runQaMatrix(
 
   // 파일을 첫 런을 걸기 전에 전부 읽는다. 조합을 펼치기도 전에 읽는 이유는 arch 가 이제
   // 축이라 [expandCombinations] 자체가 이 목록을 필요로 하기 때문이다 — 네 번째 조합의
-  // 파일 오타가 앞 세 조합이 실제 게임을 태우고 몇 분씩 돈 뒤에야 드러나면 안 된다.
+  // 파일 오타가 앞 세 조합이 실제 게임을 띄워 몇 분씩 돈 뒤에야 드러나면 안 된다.
   const arches = await readArchAxis(options.archSpecs);
 
   const combinations = expandCombinations(
@@ -156,7 +156,7 @@ export async function runQaMatrix(
   const slots = assignToSlots(combinations, options.slots.length);
   const total = combinations.length;
 
-  // 슬롯당 대기열 길이까지 말한다. 축이 다섯이 되면서 조합 수가 곱으로 늘어나고, 슬롯 하나가
+  // 슬롯당 대기열 길이까지 말한다. 축이 일곱이 되면서 조합 수가 곱으로 늘어나고, 슬롯 하나가
   // 몇 개를 차례로 돌아야 하는지가 이 명령이 몇 시간짜리인지를 정한다 — 시작하기 전에 그것을
   // 보고 그만둘 수 있어야 한다.
   // 이어 돌릴 것을 먼저 읽는다. 축이 어긋나면 게임을 하나도 띄우기 전에 멈춰야 한다.
