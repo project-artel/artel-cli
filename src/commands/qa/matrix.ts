@@ -278,7 +278,9 @@ async function runSlot(
       sink.err(
         `[slot ${String(slot)}] run ${String(combination.index + 1)}/${String(total)}: already in the journal (run ${already.qaRunId ?? '-'}), skipping.`,
       );
-      results[combination.index] = already;
+      // arch 가 축이 되기 전에 적힌 journal 줄에는 archLabel 이 없다. 그 줄을 그대로 얹으면
+      // [QaMatrixCombinationPayload] 의 필수 키 하나가 빠진 채로 나간다.
+      results[combination.index] = { ...already, archLabel: already.archLabel ?? null };
       continue;
     }
 

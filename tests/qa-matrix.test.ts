@@ -484,6 +484,82 @@ describe('runQaMatrix', () => {
     expect(payload.succeeded).toBe(2);
   });
 
+  /**
+   * arch 가 축이 되기 전에 적힌 journal 줄에는 `archLabel` 이 없다. 그 줄을 건너뛴 조합의
+   * payload 로 그대로 얹으면 `--json` 이 계약에 있는 키 하나가 빠진 채로 나간다.
+   */
+  it('fills in archLabel when resuming a journal written before the arch axis existed', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const out = `${temp.root}/matrix.jsonl`;
+    const oldShapeRun = {
+      index: 0,
+      combination: 0,
+      repeat: 0,
+      slot: 0,
+      build: BUILD_A,
+      testRunId: '1',
+      model: null,
+      promptVersion: null,
+      reasoningEffort: null,
+      // archLabel 이 없다 — arch 가 축이 되기 전의 shape 이다.
+      contentMapMode: null,
+      knowledgeMode: null,
+      gameInstanceId: 'game-old',
+      qaRunId: 'run-old',
+      status: 'COMPLETED',
+      verdict: 'PASSED',
+      stepsPassed: 1,
+      stepsTotal: 1,
+      usage: null,
+      durationMs: 1000,
+      error: null,
+    };
+    await fs.writeFile(out, `${JSON.stringify(oldShapeRun)}\n`, 'utf8');
+
+    const sink = createMemorySink();
+    const code = await runQaMatrix(
+      {
+        ...baseOptions(),
+        testRunIds: ['1'],
+        contentMapModes: [null],
+        slots: [BUILD_A],
+        out,
+        resume: true,
+      },
+      sink,
+      matrixEnv(),
+      makeStartDeps(),
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(api.timeline).toEqual([]);
+    const payload = sink.lastJson<QaMatrixPayload>();
+    expect(Object.keys(payload.combinations[0] ?? {}).sort()).toEqual([
+      'archLabel',
+      'build',
+      'combination',
+      'contentMapMode',
+      'durationMs',
+      'error',
+      'gameInstanceId',
+      'index',
+      'knowledgeMode',
+      'model',
+      'promptVersion',
+      'qaRunId',
+      'reasoningEffort',
+      'repeat',
+      'slot',
+      'status',
+      'stepsPassed',
+      'stepsTotal',
+      'testRunId',
+      'usage',
+      'verdict',
+    ]);
+    expect(payload.combinations[0]?.archLabel).toBeNull();
+  });
+
   /** 이어 돌린 것과 처음부터 돈 것의 최종 결과가 같아야 한다. */
   it('reports the same payload whether it resumed or ran the whole way', async () => {
     api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
