@@ -128,8 +128,11 @@ function parsePageNumber(value: string): number {
   return Number.parseInt(value, 10);
 }
 
-/** `--slot` 은 되풀이해 적는다. commander 는 값을 모으는 방법을 스스로 정하지 않는다. */
-function collectSlot(value: string, previous: string[]): string[] {
+/**
+ * `--slot` 과 `--arch` 처럼 되풀이해 적는 flag 가 쓰는 값 모음. commander 는 값을 모으는
+ * 방법을 스스로 정하지 않는다.
+ */
+function collectRepeated(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
@@ -501,7 +504,7 @@ export async function runCli(
     .option(
       '--slot <path>',
       "path to a game executable this matrix may drive; repeat for each slot. One run at a time per slot, and the game is relaunched between runs so the next one starts from the title screen. Each slot needs its OWN build: sdk_uuid and the game's StagePosition both live in PlayerPrefs, which Windows keys by productName, so two builds sharing a productName fold into one game instance and overwrite each other's saves. This CLI builds nothing — prepare the builds and pass their paths",
-      collectSlot,
+      collectRepeated,
       [],
     )
     .option(
@@ -536,7 +539,9 @@ export async function runCli(
     )
     .option(
       '--arch <json>',
-      "the agent's structure for every combination: a JSON object, or @path naming a file that holds one. Not an axis: one JSON object cannot be split on commas",
+      'the agent\'s structure, one axis of the product: a JSON object, or @path naming a file that holds one, each carrying a "label" field naming the arm. Repeat the flag for more than one value — one JSON object cannot be split on commas the way the other axes are. Omit and every combination runs with the server\'s own structure',
+      collectRepeated,
+      [],
     )
     .option(
       '--content-map-mode <modes>',
@@ -577,7 +582,7 @@ export async function runCli(
         out?: string | undefined;
         resume: boolean;
         reasoningMaxTokens?: string | undefined;
-        arch?: string | undefined;
+        arch: string[];
         contentMapMode?: string | undefined;
         knowledgeMode?: string | undefined;
         label?: string | undefined;
@@ -626,7 +631,7 @@ export async function runCli(
                     '--reasoning-max-tokens',
                   ),
                 }),
-            arch: options.arch,
+            archSpecs: options.arch,
             contentMapModes:
               options.contentMapMode === undefined
                 ? [null]

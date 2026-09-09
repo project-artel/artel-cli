@@ -35,6 +35,7 @@ function axes(partial: Partial<MatrixAxes>): MatrixAxes {
     models: [null],
     promptVersions: [null],
     reasoningEfforts: [null],
+    arches: [null],
     contentMapModes: [null],
     knowledgeModes: [null],
     ...partial,
@@ -150,8 +151,31 @@ describe('expandCombinations', () => {
     expect(combinations[0]?.model).toBeNull();
     expect(combinations[0]?.promptVersion).toBeNull();
     expect(combinations[0]?.reasoningEffort).toBeNull();
+    expect(combinations[0]?.arch).toBeNull();
     expect(combinations[0]?.contentMapMode).toBeNull();
     expect(combinations[0]?.knowledgeMode).toBeNull();
+  });
+
+  /**
+   * `--arch` 가 축이 됐다. 안 준 값이 아니라 실제 arch 값 둘을 줬을 때, 다른 축과 똑같이
+   * 곱해지고 선언 순서(`model` · `promptVersion` · `reasoningEffort` · `arch` ·
+   * `contentMapMode` · `knowledgeMode`)대로 자리가 정해지는지가 이 테스트다.
+   */
+  it('multiplies the arch axis with the others, in declared flag order', () => {
+    const onDemand = { label: 'v4-capture-on-demand', value: { screen_capture: 'on_demand' } };
+    const everyCall = { label: 'v4-capture-every-call', value: { screen_capture: 'every_call' } };
+
+    const combinations = expandCombinations(
+      axes({ arches: [onDemand, everyCall], contentMapModes: ['off', 'frozen'] }),
+    );
+
+    expect(combinations).toHaveLength(4);
+    expect(combinations.map((c) => [c.arch?.label, c.contentMapMode])).toEqual([
+      [onDemand.label, 'off'],
+      [onDemand.label, 'frozen'],
+      [everyCall.label, 'off'],
+      [everyCall.label, 'frozen'],
+    ]);
   });
 });
 
@@ -352,6 +376,7 @@ describe('runQaMatrix', () => {
       reasoningEfforts: [null],
       contentMapModes: ['off', 'frozen'],
       knowledgeModes: [null],
+      archSpecs: [],
       repeats: 1,
       resume: false,
       slots: [BUILD_A, BUILD_B],
@@ -545,6 +570,7 @@ describe('runQaMatrix', () => {
       'total',
     ]);
     expect(Object.keys(payload.combinations[0] ?? {}).sort()).toEqual([
+      'archLabel',
       'build',
       'combination',
       'contentMapMode',
@@ -646,5 +672,178 @@ describe('runQaMatrix', () => {
     expect(code).toBe(EXIT_USAGE);
     expect(sink.everything()).toContain('productName');
     expect(api.createBodies).toHaveLength(0);
+  });
+
+  describe('the --arch axis', () => {
+    it('sends each arch value to the server body, and omits the key when --arch is omitted', async () => {
+      api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+
+      await runQaMatrix(
+        {
+          ...baseOptions(),
+          testRunIds: ['1'],
+          contentMapModes: [null],
+          archSpecs: [
+            JSON.stringify({ label: 'v4-capture-every-call', screen_capture: 'every_call' }),
+          ],
+        },
+        createMemorySink(),
+        matrixEnv(),
+        makeStartDeps(),
+      );
+      expect(api.createBodies[0]?.arch).toEqual({
+        label: 'v4-capture-every-call',
+        screen_capture: 'every_call',
+      });
+      await api.close();
+
+      api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+      await runQaMatrix(
+        { ...baseOptions(), testRunIds: ['1'], contentMapModes: [null] },
+        createMemorySink(),
+        matrixEnv(),
+        makeStartDeps(),
+      );
+      expect(Object.keys(api.createBodies[0] ?? {})).not.toContain('arch');
+    });
+
+    /**
+     * label 이 human 출력·`--json`·`--out` 세 곳 모두에 닿아야 한다 — arch object 전체가
+     * 아니라 그 이름만으로 조합을 알아볼 수 있어야 `--resume` 도 같은 이름을 쓴다.
+     */
+    it('names the combination by the arch label in human output, --json, and --out', async () => {
+      api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+      const out = `${temp.root}/matrix.jsonl`;
+      const sink = createMemorySink();
+
+      await runQaMatrix(
+        {
+          ...baseOptions(),
+          json: false,
+          testRunIds: ['1'],
+          contentMapModes: [null],
+          archSpecs: [JSON.stringify({ label: 'v4-capture-every-call' })],
+          out,
+        },
+        sink,
+        matrixEnv(),
+        makeStartDeps(),
+      );
+
+      expect(sink.everything()).toContain('arch=v4-capture-every-call');
+
+      const lines = (await fs.readFile(out, 'utf8')).trimEnd().split('\n');
+      expect(lines.map((line) => (JSON.parse(line) as { archLabel: string }).archLabel)).toEqual([
+        'v4-capture-every-call',
+      ]);
+    });
+
+    it('rejects an arch value with no "label" field, before any run starts', async () => {
+      api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+
+      const failure = (await runQaMatrix(
+        {
+          ...baseOptions(),
+          testRunIds: ['1'],
+          archSpecs: [JSON.stringify({ screen_capture: 'every_call' })],
+        },
+        createMemorySink(),
+        matrixEnv(),
+        makeStartDeps(),
+      ).catch((error: unknown) => error)) as CliError;
+
+      expect(failure.code).toBe('qa_invalid_arch');
+      expect(api.timeline).toEqual([]);
+    });
+
+    it('rejects an unreadable --arch file, before any run starts', async () => {
+      api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+
+      const failure = (await runQaMatrix(
+        {
+          ...baseOptions(),
+          testRunIds: ['1'],
+          archSpecs: [`@${temp.root}/missing-arch.json`],
+        },
+        createMemorySink(),
+        matrixEnv(),
+        makeStartDeps(),
+      ).catch((error: unknown) => error)) as CliError;
+
+      expect(failure.code).toBe('qa_invalid_arch');
+      expect(api.timeline).toEqual([]);
+    });
+
+    /**
+     * 같은 object 를 인라인과 `@경로` 로 한 번씩 준 것이 이 검사가 잡으려는 오타다. 파일과
+     * 인라인의 키 순서를 다르게 줘서, 원문 문자열 비교였다면 놓쳤을 경우를 확인한다.
+     */
+    it('rejects the same arch structure given twice — once inline, once as @path — before any run starts', async () => {
+      api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+      const archPath = `${temp.root}/arch.json`;
+      const label = 'v4-capture-every-call';
+      await fs.writeFile(archPath, JSON.stringify({ screen_capture: 'every_call', label }), 'utf8');
+
+      const failure = (await runQaMatrix(
+        {
+          ...baseOptions(),
+          testRunIds: ['1'],
+          archSpecs: [JSON.stringify({ label, screen_capture: 'every_call' }), `@${archPath}`],
+        },
+        createMemorySink(),
+        matrixEnv(),
+        makeStartDeps(),
+      ).catch((error: unknown) => error)) as CliError;
+
+      expect(failure.code).toBe('qa_duplicate_arch');
+      expect(api.timeline).toEqual([]);
+    });
+
+    /**
+     * `--resume` 은 arch label 이 다르면 다른 조합으로 봐야 한다. 안 그러면 같은 test run 의
+     * 두 arm 중 하나를 돌리고 나서 나머지 arm 을 "이미 돌았다" 며 건너뛴다.
+     */
+    it('treats two arms of the same test run as different combinations when resuming', async () => {
+      api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+      const out = `${temp.root}/matrix.jsonl`;
+      const archSpecs = [
+        JSON.stringify({ label: 'v4-capture-on-demand' }),
+        JSON.stringify({ label: 'v4-capture-every-call' }),
+      ];
+
+      await runQaMatrix(
+        { ...baseOptions(), testRunIds: ['1'], contentMapModes: [null], archSpecs, out },
+        createMemorySink(),
+        matrixEnv(),
+        makeStartDeps(),
+      );
+      await api.close();
+
+      // 두 번째 서버는 두 arm 다 이미 끝난 것으로 읽고 launch 를 하나도 받지 않아야 한다 —
+      // arch label 이 다른데 하나로 뭉개지면 한쪽 arm 을 "이미 돌았다" 며 건너뛰게 된다.
+      api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+      const sink = createMemorySink();
+      const code = await runQaMatrix(
+        {
+          ...baseOptions(),
+          testRunIds: ['1'],
+          contentMapModes: [null],
+          archSpecs,
+          out,
+          resume: true,
+        },
+        sink,
+        matrixEnv(),
+        makeStartDeps(),
+      );
+
+      expect(api.timeline).toEqual([]);
+      expect(code).toBe(EXIT_OK);
+      const payload = sink.lastJson<QaMatrixPayload>();
+      expect(payload.combinations.map((c) => c.archLabel).sort()).toEqual([
+        'v4-capture-every-call',
+        'v4-capture-on-demand',
+      ]);
+    });
   });
 });

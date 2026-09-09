@@ -9,11 +9,11 @@ import {
 } from '../../game/start-flow.js';
 import type { SpawnedGameProcess } from '../../game/process.js';
 import type { FetchLike } from '../../http/client.js';
-import { cancelQaRun, createQaRun } from '../../http/qa.js';
+import { buildAxisFields, cancelQaRun, createQaRun } from '../../http/qa.js';
 import type { QaMatrixCombinationPayload, QaMatrixPayload } from '../../output/contract.js';
 import { writeJsonPayload, type OutputSink } from '../../output/envelope.js';
 import { describeFollowEvent, printQaMatrix } from '../../output/human.js';
-import { readArch } from '../../qa/arch.js';
+import { readArchAxis } from '../../qa/arch.js';
 import {
   appendRun,
   keyOfCombination,
@@ -45,9 +45,7 @@ export interface QaMatrixCommandOptions {
    * 전 조합에 걸리는 고정값. 축이 아니다.
    *
    * `--reasoning-max-tokens` 는 model 과 effort 가 정해진 뒤의 예산이라, 그 둘을 축으로 두고
-   * 이것까지 축으로 두면 서로 맞지 않는 조합이 곱해진다. `--arch` 는 JSON object 하나여서
-   * 쉼표로 가를 수 없다 — 목록으로 받으려면 파일 여러 개를 받는 다른 flag 모양이 필요하고,
-   * 그것은 이 이슈가 푸는 문제가 아니다.
+   * 이것까지 축으로 두면 서로 맞지 않는 조합이 곱해진다.
    */
   reasoningMaxTokens?: number | undefined;
   /**
@@ -61,8 +59,14 @@ export interface QaMatrixCommandOptions {
   out?: string | undefined;
   /** `--resume`. [out] 에 이미 있는 런을 건너뛴다. */
   resume: boolean;
-  /** `--arch` 의 원문. JSON object 이거나 `@경로`. */
-  arch?: string | undefined;
+  /**
+   * `--arch` 를 적은 순서. 각 원소는 JSON object 이거나 `@경로`. 축 하나다 —
+   * `readArchAxis` 가 이 목록을 [MatrixAxes.arches] 로 바꾼다.
+   *
+   * 비어 있으면 그 축은 한 칸이고 조합 수가 오늘과 같다. `--arch` 가 반복 flag 인 이유는
+   * `--help` 가 이미 적어 뒀다 — JSON object 하나는 쉼표로 가를 수 없다.
+   */
+  archSpecs: readonly string[];
   label?: string | undefined;
   /** `--slot` 을 적은 순서. 첨자가 슬롯 번호다. */
   slots: readonly string[];
@@ -132,12 +136,18 @@ export async function runQaMatrix(
     cliToken: resolution.credential.token,
   };
 
+  // 파일을 첫 런을 걸기 전에 전부 읽는다. 조합을 펼치기도 전에 읽는 이유는 arch 가 이제
+  // 축이라 [expandCombinations] 자체가 이 목록을 필요로 하기 때문이다 — 네 번째 조합의
+  // 파일 오타가 앞 세 조합이 실제 게임을 태우고 몇 분씩 돈 뒤에야 드러나면 안 된다.
+  const arches = await readArchAxis(options.archSpecs);
+
   const combinations = expandCombinations(
     {
       testRunIds: options.testRunIds,
       models: options.models,
       promptVersions: options.promptVersions,
       reasoningEfforts: options.reasoningEfforts,
+      arches,
       contentMapModes: options.contentMapModes,
       knowledgeModes: options.knowledgeModes,
     },
@@ -175,9 +185,6 @@ export async function runQaMatrix(
   // 같은 명령이 매번 다른 순서의 payload 를 낸다.
   const results = new Array<QaMatrixCombinationPayload | null>(combinations.length).fill(null);
   const launchGate = createLaunchGate();
-  // 한 번만 읽는다. 조합마다 다시 읽으면 matrix 가 도는 중에 파일이 바뀌었을 때 앞뒤 조합이
-  // 다른 구조로 돌고, 그 차이는 결과 어디에도 남지 않는다.
-  const arch = await readArch(options.arch);
 
   await Promise.all(
     slots.map((assigned, slot) =>
@@ -185,7 +192,6 @@ export async function runQaMatrix(
         makeStartDeps,
         launchGate,
         done,
-        ...(arch === undefined ? {} : { arch }),
         ...(fetchImpl === undefined ? {} : { fetchImpl }),
       }),
     ),
@@ -219,11 +225,6 @@ interface SlotDeps {
   fetchImpl?: FetchLike | undefined;
   /** `--resume` 이 읽어 둔, 이미 끝난 런. 열쇠는 축 값과 반복 번호다. */
   done: ReadonlyMap<string, QaMatrixCombinationPayload>;
-  /**
-   * `--arch` 를 읽어 둔 값. 조합마다 다시 읽지 않는다 — 파일을 매번 읽으면 matrix 가 도는
-   * 중에 그 파일이 바뀌었을 때 앞뒤 조합이 다른 구조로 돌고, 그 차이는 결과 어디에도 안 남는다.
-   */
-  arch?: unknown;
   /** 등록을 한 번에 하나씩만 시키는 문. [createLaunchGate] 참고. */
   launchGate: LaunchGate;
 }
@@ -332,6 +333,7 @@ async function runCombination(
     model: combination.model,
     promptVersion: combination.promptVersion,
     reasoningEffort: combination.reasoningEffort,
+    archLabel: combination.arch?.label ?? null,
     contentMapMode: combination.contentMapMode,
     knowledgeMode: combination.knowledgeMode,
   };
@@ -370,27 +372,16 @@ async function runCombination(
       {
         testRunId: combination.testRunId,
         gameInstanceId: started.instance.id,
-        // 안 준 축은 키 자체를 싣지 않는다. 빈 문자열은 서버가 값으로 읽어 400 이 된다.
-        ...(combination.model === null ? {} : { model: combination.model }),
-        ...(combination.promptVersion === null ? {} : { promptVersion: combination.promptVersion }),
-        ...(combination.reasoningEffort === null && options.reasoningMaxTokens === undefined
-          ? {}
-          : {
-              reasoning: {
-                ...(combination.reasoningEffort === null
-                  ? {}
-                  : { effort: combination.reasoningEffort }),
-                ...(options.reasoningMaxTokens === undefined
-                  ? {}
-                  : { maxTokens: options.reasoningMaxTokens }),
-              },
-            }),
-        ...(deps.arch === undefined ? {} : { arch: deps.arch }),
-        ...(combination.contentMapMode === null
-          ? {}
-          : { contentMapMode: combination.contentMapMode }),
-        ...(combination.knowledgeMode === null ? {} : { knowledgeMode: combination.knowledgeMode }),
-        ...(options.label === undefined ? {} : { label: options.label }),
+        ...buildAxisFields({
+          model: combination.model,
+          promptVersion: combination.promptVersion,
+          reasoningEffort: combination.reasoningEffort,
+          reasoningMaxTokens: options.reasoningMaxTokens,
+          arch: combination.arch?.value,
+          contentMapMode: combination.contentMapMode,
+          knowledgeMode: combination.knowledgeMode,
+          label: options.label,
+        }),
         // `--force` 를 열지 않는다. 이 명령은 자기가 띄운 게임에서만 돌므로, 남의 런을 끊어야
         // 하는 상황은 이 슬롯이 앞 조합을 제대로 치우지 못했다는 뜻이고 그것은 숨길 일이 아니다.
         force: false,

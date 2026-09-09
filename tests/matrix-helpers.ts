@@ -18,6 +18,9 @@ import { terminalLog, type FakeQaLog } from './qa-helpers.js';
 export interface CreateQaRunBody {
   testRunId: string;
   gameInstanceId: string;
+  model?: string;
+  promptVersion?: string;
+  arch?: unknown;
   contentMapMode?: string;
   knowledgeMode?: string;
   label?: string;

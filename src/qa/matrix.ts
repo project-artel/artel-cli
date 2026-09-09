@@ -10,7 +10,18 @@
 export type AxisValue = string | null;
 
 /**
- * 축 다섯. 전개 순서가 이 선언 순서이고, 그것이 `--help` 와 README 가 적는 순서다.
+ * `--arch` 축 하나의 값. `null` 은 다른 축과 같은 뜻이다 — flag 를 안 줘 한 칸짜리 축이 됐고
+ * body 에 `arch` 키가 빠진다.
+ *
+ * [label] 은 이 조합의 이름이 되는 유일한 출처다 — 파일 이름으로 떨어지지 않는다
+ * ([describeCombination] 참고). [value] 는 서버로 그대로 보낼, 파싱된 JSON object 다. 파일을
+ * 읽는 일은 이 파일이 하지 않는다 — 이 파일은 HTTP 도 프로세스도 건드리지 않는 순수 계산이고,
+ * 디스크에서 읽어 온 결과만 여기 들어온다(`src/qa/arch.ts` 참고).
+ */
+export type ArchAxisValue = { label: string; value: unknown } | null;
+
+/**
+ * 축 여섯. 전개 순서가 이 선언 순서이고, 그것이 `--help` 와 README 가 적는 순서다.
  *
  * 순서를 고정하는 것이 요점이다 — 같은 명령을 두 번 돌리면 같은 조합이 같은 번호를 받고,
  * 그래야 [assignToSlots] 의 배정도 두 번 다 같다.
@@ -20,6 +31,7 @@ export interface MatrixAxes {
   models: readonly AxisValue[];
   promptVersions: readonly AxisValue[];
   reasoningEfforts: readonly AxisValue[];
+  arches: readonly ArchAxisValue[];
   contentMapModes: readonly AxisValue[];
   knowledgeModes: readonly AxisValue[];
 }
@@ -41,6 +53,7 @@ export interface MatrixCombination {
   model: AxisValue;
   promptVersion: AxisValue;
   reasoningEffort: AxisValue;
+  arch: ArchAxisValue;
   contentMapMode: AxisValue;
   knowledgeMode: AxisValue;
 }
@@ -69,22 +82,25 @@ export function expandCombinations(
     for (const model of axes.models) {
       for (const promptVersion of axes.promptVersions) {
         for (const reasoningEffort of axes.reasoningEfforts) {
-          for (const contentMapMode of axes.contentMapModes) {
-            for (const knowledgeMode of axes.knowledgeModes) {
-              for (let repeat = 0; repeat < repeats; repeat += 1) {
-                combinations.push({
-                  index: combinations.length,
-                  combination,
-                  repeat,
-                  testRunId,
-                  model,
-                  promptVersion,
-                  reasoningEffort,
-                  contentMapMode,
-                  knowledgeMode,
-                });
+          for (const arch of axes.arches) {
+            for (const contentMapMode of axes.contentMapModes) {
+              for (const knowledgeMode of axes.knowledgeModes) {
+                for (let repeat = 0; repeat < repeats; repeat += 1) {
+                  combinations.push({
+                    index: combinations.length,
+                    combination,
+                    repeat,
+                    testRunId,
+                    model,
+                    promptVersion,
+                    reasoningEffort,
+                    arch,
+                    contentMapMode,
+                    knowledgeMode,
+                  });
+                }
+                combination += 1;
               }
-              combination += 1;
             }
           }
         }
@@ -113,13 +129,19 @@ export function assignToSlots(
   return slots;
 }
 
-/** 조합 하나를 사람이 읽을 한 줄로. arm 이름을 짓지 않고 축 값 그대로 적는다. */
+/**
+ * 조합 하나를 사람이 읽을 한 줄로. arm 이름을 짓지 않고 축 값 그대로 적는다.
+ *
+ * arch 축은 `arch.label` 만 적는다. 그 object 전체를 적으면 한 줄이 JSON 덩어리가 되고,
+ * 조합의 정체는 label 하나로 충분하다 — [ArchAxisValue] 의 문서 참고.
+ */
 export function describeCombination(combination: MatrixCombination, repeats = 1): string {
   return [
     `testRun=${combination.testRunId}`,
     `model=${combination.model ?? 'server default'}`,
     `prompt=${combination.promptVersion ?? 'server default'}`,
     `reasoning=${combination.reasoningEffort ?? 'server default'}`,
+    `arch=${combination.arch?.label ?? 'server default'}`,
     `contentMap=${combination.contentMapMode ?? 'server default'}`,
     `knowledge=${combination.knowledgeMode ?? 'server default'}`,
     // 반복이 하나뿐이면 적지 않는다. `--repeat` 을 쓰지 않은 사람의 출력에 늘 `repeat=1/1` 이

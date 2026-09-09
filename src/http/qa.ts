@@ -172,6 +172,62 @@ export interface CreateQaRunRequest {
 }
 
 /**
+ * [buildAxisFields] 가 받는 축 값들. `qa run` 의 단일 옵션은 "안 줌" 을 `undefined` 로 적고
+ * `qa matrix` 의 축 값은 "안 줌" 을 `null` 로 적는다 — 두 관례가 여기서 만나므로 둘 다 받는다.
+ */
+export interface QaRunAxisValues {
+  model: string | null | undefined;
+  promptVersion: string | null | undefined;
+  reasoningEffort: string | null | undefined;
+  reasoningMaxTokens: number | undefined;
+  /** 이미 읽어 둔 arch object. 파일 경로나 원문이 아니라 파싱된 값이다. */
+  arch: unknown;
+  contentMapMode: string | null | undefined;
+  knowledgeMode: string | null | undefined;
+  label: string | undefined;
+}
+
+function isGiven<T>(value: T | null | undefined): value is T {
+  return value !== null && value !== undefined;
+}
+
+/**
+ * 축 값들을 `CreateQaRunRequest` 의 선택 필드로 옮긴다.
+ *
+ * `qa run` 과 `qa matrix` 는 둘 다 이 매핑이 필요하다 — 하나는 사용자가 고른 값 그대로,
+ * 다른 하나는 조합이 이번에 쓸 축 값으로. 각자 body 를 다시 만들면 사본이 둘 생기고, 축이
+ * 하나 늘 때마다 두 곳을 같이 고쳐야 하며 언젠가 어긋난다.
+ *
+ * 안 준 값은 키 자체를 싣지 않는다. 빈 문자열이나 `arch: undefined` 를 그대로 실으면 서버가
+ * 그것을 값으로 읽고 400 으로 거절한다 — 기본값으로 떨어지지 않는다.
+ */
+export function buildAxisFields(
+  axis: QaRunAxisValues,
+): Pick<
+  CreateQaRunRequest,
+  'model' | 'promptVersion' | 'reasoning' | 'arch' | 'contentMapMode' | 'knowledgeMode' | 'label'
+> {
+  return {
+    ...(isGiven(axis.model) ? { model: axis.model } : {}),
+    ...(isGiven(axis.promptVersion) ? { promptVersion: axis.promptVersion } : {}),
+    ...(!isGiven(axis.reasoningEffort) && axis.reasoningMaxTokens === undefined
+      ? {}
+      : {
+          reasoning: {
+            ...(isGiven(axis.reasoningEffort) ? { effort: axis.reasoningEffort } : {}),
+            ...(axis.reasoningMaxTokens === undefined
+              ? {}
+              : { maxTokens: axis.reasoningMaxTokens }),
+          },
+        }),
+    ...(axis.arch === undefined ? {} : { arch: axis.arch }),
+    ...(isGiven(axis.contentMapMode) ? { contentMapMode: axis.contentMapMode } : {}),
+    ...(isGiven(axis.knowledgeMode) ? { knowledgeMode: axis.knowledgeMode } : {}),
+    ...(axis.label === undefined ? {} : { label: axis.label }),
+  };
+}
+
+/**
  * `POST /api/qa-runs`. 409 셋은 상태코드로 갈리지 않고 `code` 로 갈린다(`QaConflicts.kt`).
  * 그 셋을 서로 다른 CLI 오류 코드로 옮기는 것은, `qa_run_active` 만이 `--force` 로 되돌릴 수
  * 있는 **선택지**이고 나머지 둘은 사람이 뭔가 고쳐야 하는 상태이기 때문이다.

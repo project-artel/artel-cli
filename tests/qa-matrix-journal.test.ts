@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { CliError } from '../src/errors.js';
 import type { QaMatrixCombinationPayload } from '../src/output/contract.js';
-import { appendRun, readJournal, rejectForeignRuns, runKey } from '../src/qa/journal.js';
+import { appendRun, keyOfCombination, readJournal, rejectForeignRuns } from '../src/qa/journal.js';
 import { expandCombinations, type MatrixAxes } from '../src/qa/matrix.js';
 
 function axes(partial: Partial<MatrixAxes> = {}): MatrixAxes {
@@ -15,6 +15,7 @@ function axes(partial: Partial<MatrixAxes> = {}): MatrixAxes {
     models: [null],
     promptVersions: [null],
     reasoningEfforts: [null],
+    arches: [null],
     contentMapModes: [null],
     knowledgeModes: [null],
     ...partial,
@@ -34,6 +35,7 @@ function finishedRun(
     model: null,
     promptVersion: null,
     reasoningEffort: null,
+    archLabel: null,
     contentMapMode: null,
     knowledgeMode: null,
     gameInstanceId: '10',
@@ -103,7 +105,7 @@ describe('the matrix journal', () => {
 
     // 축이 하나 늘어도 `off` 조합의 index 는 0 으로 같다. 그런데 설정은 다르다.
     expect(before[0]?.index).toBe(after[0]?.index);
-    expect(runKey(before[0]!)).not.toBe(runKey(after[0]!));
+    expect(keyOfCombination(before[0]!)).not.toBe(keyOfCombination(after[0]!));
   });
 
   it('accepts a journal whose runs are all inside the current product', () => {

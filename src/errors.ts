@@ -35,6 +35,7 @@ export const ERROR_CODES = [
   'qa_watch_disconnected',
   'qa_watch_timeout',
   'qa_invalid_arch',
+  'qa_duplicate_arch',
   'matrix_journal_unwritable',
   'matrix_journal_unreadable',
   'matrix_journal_mismatch',
