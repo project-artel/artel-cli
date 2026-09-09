@@ -800,6 +800,33 @@ describe('runQaMatrix', () => {
     });
 
     /**
+     * label 이 조합의 정체 전부다(`keyOfCombination`, `describeCombination` 참고). 두
+     * arch object 가 서로 달라도 label 이 같으면 `--out` 에 같은 열쇠로 적히고, 그중 하나가
+     * 사라진 것처럼 보인다 — 파일을 복사해 knob 만 고치고 label 을 그대로 둔 실수다.
+     */
+    it('rejects two different arch structures sharing the same label, before any run starts', async () => {
+      api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+      const label = 'v4-capture-every-call';
+
+      const failure = (await runQaMatrix(
+        {
+          ...baseOptions(),
+          testRunIds: ['1'],
+          archSpecs: [
+            JSON.stringify({ label, screen_capture: 'every_call' }),
+            JSON.stringify({ label, screen_capture: 'on_demand' }),
+          ],
+        },
+        createMemorySink(),
+        matrixEnv(),
+        makeStartDeps(),
+      ).catch((error: unknown) => error)) as CliError;
+
+      expect(failure.code).toBe('qa_duplicate_arch');
+      expect(api.timeline).toEqual([]);
+    });
+
+    /**
      * `--resume` 은 arch label 이 다르면 다른 조합으로 봐야 한다. 안 그러면 같은 test run 의
      * 두 arm 중 하나를 돌리고 나서 나머지 arm 을 "이미 돌았다" 며 건너뛴다.
      */
