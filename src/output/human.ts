@@ -313,7 +313,7 @@ export function printQaMatrix(sink: OutputSink, payload: QaMatrixPayload): void 
 }
 
 function describeAxes(combination: QaMatrixCombinationPayload): string {
-  return `testRun=${combination.testRunId} contentMap=${combination.contentMapMode ?? 'server default'} knowledge=${combination.knowledgeMode ?? 'server default'}`;
+  return `testRun=${combination.testRunId} arch=${combination.archLabel ?? 'server default'} contentMap=${combination.contentMapMode ?? 'server default'} knowledge=${combination.knowledgeMode ?? 'server default'}`;
 }
 
 /** 세지 못한 것과 0 은 다르다. 판정 요약이 없는 조합은 `-` 다. */

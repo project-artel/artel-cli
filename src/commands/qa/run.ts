@@ -1,7 +1,6 @@
-
 import { EXIT_OK } from '../../exit.js';
 import type { FetchLike } from '../../http/client.js';
-import { createQaRun } from '../../http/qa.js';
+import { buildAxisFields, createQaRun } from '../../http/qa.js';
 import type { OutputSink } from '../../output/envelope.js';
 import { readArch } from '../../qa/arch.js';
 import { resolveQaContext } from '../../qa/context.js';
@@ -62,24 +61,16 @@ export async function runQaRun(
     {
       testRunId: options.testRun,
       gameInstanceId: options.instance,
-      ...(options.model === undefined ? {} : { model: options.model }),
-      ...(options.promptVersion === undefined ? {} : { promptVersion: options.promptVersion }),
-      ...(options.reasoningEffort === undefined && options.reasoningMaxTokens === undefined
-        ? {}
-        : {
-            reasoning: {
-              ...(options.reasoningEffort === undefined ? {} : { effort: options.reasoningEffort }),
-              ...(options.reasoningMaxTokens === undefined
-                ? {}
-                : { maxTokens: options.reasoningMaxTokens }),
-            },
-          }),
-      ...(arch === undefined ? {} : { arch }),
-      // 안 준 축은 키 자체를 싣지 않는다. 빈 문자열을 실으면 서버가 그것을 값으로 읽고
-      // 400 으로 거절한다 — 기본값으로 떨어지지 않는다.
-      ...(options.contentMapMode === undefined ? {} : { contentMapMode: options.contentMapMode }),
-      ...(options.knowledgeMode === undefined ? {} : { knowledgeMode: options.knowledgeMode }),
-      ...(options.label === undefined ? {} : { label: options.label }),
+      ...buildAxisFields({
+        model: options.model,
+        promptVersion: options.promptVersion,
+        reasoningEffort: options.reasoningEffort,
+        reasoningMaxTokens: options.reasoningMaxTokens,
+        arch,
+        contentMapMode: options.contentMapMode,
+        knowledgeMode: options.knowledgeMode,
+        label: options.label,
+      }),
       force: options.force,
     },
     fetchImpl,
@@ -99,4 +90,3 @@ export async function runQaRun(
   sink.err(`Started QA run ${created.id}. Watching it.`);
   return await watchToEnd(context, created.id, options, sink, fetchImpl);
 }
-

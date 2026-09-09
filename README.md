@@ -258,9 +258,9 @@ artel qa matrix \
 
 That is 2 test runs × 1 model × 2 content map modes × 1 knowledge mode = 4 runs,
 spread over 2 slots. The product is expanded in a fixed order — test run, model,
-prompt version, reasoning effort, content map mode, knowledge mode — and
-combination *i* goes to slot *i mod slots*, so running the same command twice
-sends the same combination to the same slot.
+prompt version, reasoning effort, agent structure (`--arch`), content map mode,
+knowledge mode — and combination *i* goes to slot *i mod slots*, so running the
+same command twice sends the same combination to the same slot.
 
 **An axis given one value is pinned, not multiplied.** `--model` above does not
 add combinations; it makes every run use that model. That is the reason to pass
@@ -272,12 +272,23 @@ table and nothing in the output says so.
 `artel qa diff` selects on, so a matrix can now produce the runs that diff
 compares. `artel qa models` lists the ids and the efforts each model takes.
 
-`--reasoning-max-tokens` and `--arch` are fixed values for the whole matrix
-rather than axes. The token budget only means something under a chosen model and
-effort, so multiplying it against those two produces combinations that do not go
-together; `--arch` is one JSON object and cannot be split on commas. A work-stealing queue would finish
-sooner but would decide that by timing, and which build a run happened on is part
-of the measurement.
+**`--arch` is an axis too, but it is repeated rather than comma-separated** —
+each occurrence is a JSON object, or `@path` naming a file that holds one, and a
+JSON object cannot be split on commas the way the other axes are. Leave it out
+and every combination runs with the server's own structure, still one cell.
+Every value used as an axis needs its own `"label"` field: the combination's
+name for that arch comes only from that field, never from the file name, so
+moving the file does not rename the combination and `--out`/`--resume` never
+lose track of which arm a line belongs to. Giving the same structure twice —
+say once inline and once as `@path` — is always a mistake, since repeating a
+combination is `--repeat`'s job; the CLI compares the parsed JSON with keys
+sorted, not the raw text, so it catches that even when the two spellings differ.
+
+`--reasoning-max-tokens` is a fixed value for the whole matrix rather than an
+axis. The token budget only means something under a chosen model and effort, so
+multiplying it against those two produces combinations that do not go together.
+A work-stealing queue would finish sooner but would decide that by timing, and
+which build a run happened on is part of the measurement.
 
 **`--repeat n` runs each combination n times.** A QA run is not deterministic:
 the same configuration twice does not give the same result. A table with one run

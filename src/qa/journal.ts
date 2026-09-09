@@ -25,6 +25,8 @@ export function runKey(run: {
   model: string | null;
   promptVersion: string | null;
   reasoningEffort: string | null;
+  /** arch 축 값의 label. `describeCombination` 처럼 조합의 정체는 label 하나가 전부다. */
+  archLabel: string | null;
   contentMapMode: string | null;
   knowledgeMode: string | null;
   repeat: number;
@@ -34,14 +36,21 @@ export function runKey(run: {
     run.model,
     run.promptVersion,
     run.reasoningEffort,
+    run.archLabel,
     run.contentMapMode,
     run.knowledgeMode,
     run.repeat,
   ]);
 }
 
+/**
+ * arch 축을 통째로 넘기지 않고 [MatrixCombination.arch] 에서 `label` 만 꺼내 [runKey] 에
+ * 넘긴다. 이 열쇠가 구분해야 하는 것은 조합의 정체이고, arch 축에서 그 정체는 label 뿐이다
+ * (`describeCombination` 참고) — 같은 label 아래 arch object 가 조용히 바뀌는 것까지
+ * `--resume` 이 잡을 일은 아니다.
+ */
 export function keyOfCombination(combination: MatrixCombination): string {
-  return runKey(combination);
+  return runKey({ ...combination, archLabel: combination.arch?.label ?? null });
 }
 
 /**
@@ -119,6 +128,6 @@ export function rejectForeignRuns(
   const first = foreign[0];
   throw new CliError(
     'matrix_journal_mismatch',
-    `${path} holds ${String(foreign.length)} run(s) this command would not produce — the first is testRun=${first?.testRunId ?? '-'} model=${first?.model ?? 'server default'} contentMap=${first?.contentMapMode ?? 'server default'} knowledge=${first?.knowledgeMode ?? 'server default'} repeat=${String((first?.repeat ?? 0) + 1)}. That file belongs to a different set of axes; resuming onto it would put two experiments in one table.`,
+    `${path} holds ${String(foreign.length)} run(s) this command would not produce — the first is testRun=${first?.testRunId ?? '-'} model=${first?.model ?? 'server default'} arch=${first?.archLabel ?? 'server default'} contentMap=${first?.contentMapMode ?? 'server default'} knowledge=${first?.knowledgeMode ?? 'server default'} repeat=${String((first?.repeat ?? 0) + 1)}. That file belongs to a different set of axes; resuming onto it would put two experiments in one table.`,
   );
 }

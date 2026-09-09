@@ -227,6 +227,12 @@ export interface QaMatrixCombinationPayload {
   model: string | null;
   promptVersion: string | null;
   reasoningEffort: string | null;
+  /**
+   * arch 축 값의 `label`. arch object 전체가 아니라 이 이름만 싣는다 — 조합의 정체가 이
+   * label 하나이고([describeCombination] 이 arm 이름을 짓지 않는 이유와 같다), `null` 은
+   * 그 축의 flag 를 주지 않아 서버 기본값으로 돌았다는 뜻이다.
+   */
+  archLabel: string | null;
   contentMapMode: string | null;
   knowledgeMode: string | null;
   gameInstanceId: string | null;
