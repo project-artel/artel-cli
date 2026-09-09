@@ -147,6 +147,29 @@ export interface QaTryPayload {
   steps: QaCountsPayload;
   cases: QaCountsPayload;
   stepResults: QaStepPayload[];
+  /** 이 try 의 지출. 읽지 못했으면 `null` 이다. */
+  usage: QaUsagePayload | null;
+}
+
+/**
+ * 런 하나 또는 try 하나가 쓴 LLM 지출. 필드 이름은 서버의 `LlmUsageTotals` 그대로다.
+ *
+ * 전부 합계다. `costUsd` 가 `null` 이면 단가를 아는 호출이 하나도 없다는 뜻이고 0 과 다르다 —
+ * 둘을 같은 0 으로 읽으면 arm 비용 비교가 조용히 틀린다. `pricedCalls` 가 `calls` 보다 작으면
+ * 그 금액은 일부 호출에만 얹힌 값이다.
+ *
+ * `cachedInputTokens` 는 `inputTokens` 에 포함된 값이라 더하면 두 번 센다.
+ *
+ * payload 자체가 `null` 이면 사용량을 읽지 못했다는 뜻이다. 지출이 0 이었다는 뜻이 아니다.
+ */
+export interface QaUsagePayload {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  reasoningTokens: number;
+  costUsd: number | null;
+  calls: number;
+  pricedCalls: number;
 }
 
 /** `qa run`, `qa watch`, `qa show` 가 모두 이 한 모양을 낸다. */
@@ -162,6 +185,8 @@ export interface QaRunPayload {
   cases: QaCountsPayload;
   tries: QaTryPayload[];
   issues: QaIssuePayload[];
+  /** try 들의 합. 하나도 읽지 못했으면 `null` 이다. */
+  usage: QaUsagePayload | null;
 }
 
 export interface QaCancelPayload {
@@ -183,11 +208,25 @@ export interface QaCancelPayload {
 export interface QaMatrixCombinationPayload {
   /** 전개 순서. 0부터. 같은 명령은 같은 조합에 같은 번호를 준다. */
   index: number;
+  /**
+   * 축 값이 같은 반복들이 공유하는 번호. `--repeat` 이 1 이면 [index] 와 같다.
+   *
+   * 이 둘을 나눠 싣는 이유는 반복이 통계의 재료이기 때문이다. `combination` 으로 묶고
+   * `repeat` 으로 세면 조합마다 몇 번 중 몇 번 통과했는지가 나오는데, 하나로 뭉개면 그 계산이
+   * 불가능해진다. CLI 는 그 계산을 하지 않고 재료만 낸다.
+   */
+  combination: number;
+  /** 그 조합의 몇 번째 반복인지. 0부터. */
+  repeat: number;
   /** 이 조합이 돈 슬롯. 0부터, `--slot` 을 적은 순서다. */
   slot: number;
   /** 그 슬롯의 빌드 경로. 슬롯마다 빌드가 다르다. */
   build: string;
   testRunId: string;
+  /** 축 값 그대로. `null` 은 그 축의 flag 를 주지 않아 서버 기본값으로 돌았다는 뜻이다. */
+  model: string | null;
+  promptVersion: string | null;
+  reasoningEffort: string | null;
   contentMapMode: string | null;
   knowledgeMode: string | null;
   gameInstanceId: string | null;
@@ -200,6 +239,11 @@ export interface QaMatrixCombinationPayload {
   verdict: QaVerdictValue;
   stepsPassed: number | null;
   stepsTotal: number | null;
+  /**
+   * 이 조합이 쓴 지출. arm 을 비교할 때 "어느 쪽이 더 맞혔나" 만으로는 결론이 서지 않는다 —
+   * 정확도를 조금 올리면서 token 을 두 배 쓴 arm 은 다른 결론이다.
+   */
+  usage: QaUsagePayload | null;
   /** 게임을 띄우기 시작해 런이 끝날 때까지. 띄우는 시간이 들어 있다. */
   durationMs: number;
   /** 실패한 이유. 통과했거나 판정만 `FAILED` 인 조합은 `null` 이다. */
@@ -345,6 +389,69 @@ export interface QaModelPayload {
 export interface QaLabelsPayload {
   labels: string[];
   projectId: string | null;
+}
+
+/**
+ * `issue list --json`. 최신순 커서 페이지다.
+ *
+ * `nextBeforeId` 와 `hasMore` 를 그대로 싣는다. 커서를 감추면 받은 것이 전부인지 잘린 것인지
+ * 읽는 쪽이 알 수 없고, 없는 이슈를 없다고 읽는다.
+ */
+/**
+ * `map show --json`. 지도 전체가 아니라 세는 값들이다 — 씬과 기능 원문은 콘솔이 그린다.
+ *
+ * `contentMapId` 가 `null` 인 것과 `ingestedAt` 이 `null` 인 것은 다른 상태다. 앞은 등록된
+ * `evidence` 문서가 없는 것이고, 뒤는 등록은 됐는데 아직 앉지 않은 것이다.
+ *
+ * `lastScanState` 가 `null` 이면 서버가 뜬 뒤로 이 빌드에 스캔을 시킨 적이 없다는 뜻이지,
+ * 지도가 스캔 없이 생겼다는 뜻이 아니다.
+ */
+export interface ContentMapViewPayload {
+  projectId: string;
+  gameBuildId: string;
+  contentMapId: string | null;
+  ingestedAt: string | null;
+  scenes: number;
+  edges: number;
+  screenTransitions: number;
+  gaps: number;
+  pendingDocuments: number;
+  verifiedFeatures: number;
+  totalFeatures: number;
+  lastScanState: string | null;
+  lastScanFinishedAt: string | null;
+  lastScanError: string | null;
+}
+
+export interface IssueListPayload {
+  items: IssuePayload[];
+  nextBeforeId: string | null;
+  hasMore: boolean;
+}
+
+export interface IssuePayload {
+  id: string;
+  /** 이 이슈를 찾은 try. */
+  qaTryId: string;
+  /** 그 try 가 속한 run. `qa show` 가 받는 값이다. */
+  qaRunId: string | null;
+  severity: string;
+  title: string;
+  status: string;
+  reportedAt: string;
+  resolvedAt: string | null;
+}
+
+/**
+ * `issue resolve --json` 과 `issue reopen --json`.
+ *
+ * 서버가 본문 없는 204 를 내므로 이것은 되읽은 값이 아니라 CLI 가 아는 사실이다 — 어느 이슈에
+ * 어느 명령을 걸었고 그것이 성공했다는 것. 실제 상태를 다시 확인하려면 `issue list` 를 부른다.
+ */
+export interface IssueStatusChangePayload {
+  issueId: string;
+  action: 'resolve' | 'reopen';
+  status: string;
 }
 
 export interface QaListPayload {

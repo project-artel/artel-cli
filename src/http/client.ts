@@ -28,9 +28,10 @@ export interface CliTokenExchangeRequest {
 /**
  * 브라우저를 지나간 일회용 `code` 를, verifier 를 쥔 이쪽이 `artel_` token 으로 바꾼다.
  *
- * 이 endpoint 는 아직 orchestration 서버에 없다. ARTEL-780 은 이것을 짓지 않으므로,
- * 서버가 404 로 답하면 일반적인 `server_error` 가 아니라 "서버가 아직 CLI 로그인을
- * 지원하지 않는다" 고 정확히 말한다.
+ * 이 endpoint 는 `CliTokenController.exchangeLoginCode` 로 서버에 있다. 그래도 404 를 따로
+ * 다루는 이유는 배포마다 다르기 때문이다 — 이 CLI 는 자기가 가리키는 서버가 어느 버전인지
+ * 모르고, 그것이 없는 배포를 가리켰을 때 일반 `server_error` 로 뭉개면 사용자는 자기 설정이
+ * 틀린 줄 안다.
  */
 export async function exchangeCliToken(
   apiBaseUrl: string,
@@ -57,7 +58,7 @@ export async function exchangeCliToken(
   if (response.status === 404) {
     throw new CliError(
       'login_not_supported',
-      `The server at ${apiBaseUrl} does not support CLI login yet: it has no ${CLI_TOKEN_EXCHANGE_PATH} endpoint. Until that endpoint ships, authenticate by setting ARTEL_TOKEN to a token created in the console.`,
+      `The server at ${apiBaseUrl} has no ${CLI_TOKEN_EXCHANGE_PATH} endpoint, so it cannot complete a CLI login. That endpoint exists in the orchestration server; this deployment is probably older than it. Authenticate by setting ARTEL_TOKEN to a token created in the console.`,
     );
   }
 
@@ -154,10 +155,9 @@ export interface SdkTokenMintResponse {
  * `cli_token` 하나로, SDK 가 쓰는 `aud=artel-sdk` token 을 새로 낸다. 사용자는 CLI 자격
  * 증명만 쥐고 있고 SDK token 이 존재한다는 것조차 몰라도 된다 — 이 함수가 그 경계다.
  *
- * ARTEL-788 이 아직 이 endpoint 를 짓지 않았을 수 있다. 경로가 정해지지 않아 이 상수
- * 하나만 바꾸면 되게 해 두었다. 404 면 `login_not_supported` 와 같은 패턴으로, 서버에
- * 무엇이 없는지 정확히 말한다 — 일반 `server_error` 로 뭉개면 사용자는 자기 project id 나
- * build 경로가 틀린 줄 안다.
+ * 이 endpoint 는 `SdkTokenController` 로 서버에 있다. 404 를 따로 다루는 것은
+ * `exchangeCliToken` 과 같은 이유다 — 그것이 없는 배포를 가리켰을 때 일반 `server_error` 로
+ * 뭉개면 사용자는 자기 project id 나 build 경로가 틀린 줄 안다.
  */
 export async function mintSdkToken(
   apiBaseUrl: string,
@@ -183,7 +183,7 @@ export async function mintSdkToken(
   if (response.status === 404) {
     throw new CliError(
       'sdk_token_not_supported',
-      `The server at ${apiBaseUrl} does not support minting SDK tokens yet: it has no ${SDK_TOKEN_MINT_PATH} endpoint. "artel game start" and "artel game logout" cannot launch a signed-in build until that endpoint ships.`,
+      `The server at ${apiBaseUrl} has no ${SDK_TOKEN_MINT_PATH} endpoint, so it cannot mint an SDK token. That endpoint exists in the orchestration server; this deployment is probably older than it. "artel game start" and "artel game logout" cannot launch a signed-in build against it.`,
     );
   }
 

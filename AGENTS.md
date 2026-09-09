@@ -34,12 +34,12 @@ This CLI is published, so follow `.agents/docs/release.md` for a release.
 Use project-local skills when installed and applicable. Skill instructions
 define their own triggers, formats, and output paths.
 
-## A token while the login command does not exist yet
+## A token without going through the browser
 
-`artel auth login` is the shape this repository is being built toward, not
-something that runs today. Until it does, any command that calls the
-orchestration server needs a token from somewhere. Against a local server, mint
-it:
+`artel auth login` works against a server that has
+`POST /api/auth/cli-tokens/exchange`, which the orchestration server does. But
+the flow needs a browser and a console session, and an agent driving this
+repository usually has neither. Against a local server, mint a token instead:
 
 ```bash
 TOKEN=$(.claude/skills/artel-jwt/mint-jwt.py --sub <app_user.id> --ttl 8h)

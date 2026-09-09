@@ -16,16 +16,17 @@ import type {
   QaMatrixPayload,
   QaMetricsPayload,
   QaRunPayload,
+  QaUsagePayload,
   QaVerdictValue,
   ScenarioApprovePayload,
   ScenarioDeletePayload,
   ScenarioListPayload,
   ScenarioPayload,
+  StatusPayload,
   TestRunDeletePayload,
   TestRunListPayload,
   TestRunPayload,
   TestRunScenariosPayload,
-  StatusPayload,
 } from './contract.js';
 import type { OutputSink } from './envelope.js';
 
@@ -188,6 +189,7 @@ export function printQaRun(sink: OutputSink, payload: QaRunPayload): void {
   sink.out(`  completed      ${payload.completedAt ?? '-'}`);
   sink.out(`  steps          ${describeCounts(payload.steps)}`);
   sink.out(`  cases          ${describeCounts(payload.cases)}`);
+  sink.out(`  usage          ${describeUsage(payload.usage)}`);
 
   for (const qaTry of payload.tries) {
     sink.out(
@@ -216,12 +218,67 @@ export function printQaRun(sink: OutputSink, payload: QaRunPayload): void {
 }
 
 /**
+ * 지출 한 줄.
+ *
+ * `costUsd` 가 없는 것과 0 인 것을 구별해 적는다. 둘을 같은 `$0.00` 으로 그리면, 단가를 모르는
+ * provider 로 돌린 arm 이 공짜였던 것으로 읽힌다. 금액이 몇 건의 호출에 얹혔는지도 함께 적어,
+ * 일부만 값이 매겨진 금액을 전체 비용으로 읽지 않게 한다.
+ */
+function describeUsage(usage: QaUsagePayload | null): string {
+  if (usage === null) {
+    return 'not read';
+  }
+  const tokens = `${String(usage.inputTokens)} in / ${String(usage.outputTokens)} out`;
+  if (usage.costUsd === null) {
+    return `${tokens}, ${String(usage.calls)} call(s), cost unknown (no priced call)`;
+  }
+  const priced =
+    usage.pricedCalls === usage.calls
+      ? `${String(usage.calls)} call(s)`
+      : `${String(usage.pricedCalls)} of ${String(usage.calls)} call(s) priced`;
+  return `${tokens}, ${priced}, $${usage.costUsd.toFixed(4)}`;
+}
+
+/**
+ * 반복을 켰을 때만 조합별 통과 횟수를 적는다.
+ *
+ * 세는 것까지가 CLI 의 일이다. 평균도 분산도 내지 않는다 — 몇 번 중 몇 번인지는 분모가 보이는
+ * 세기이고, 그 위의 통계는 이 목록을 읽는 쪽이 낸다. `qa diff` 가 비율 대신 합을 다루는 것과
+ * 같은 규율이다.
+ */
+function printRepeatTally(sink: OutputSink, payload: QaMatrixPayload): void {
+  const repeated = new Map<number, { passed: number; of: number; axes: string }>();
+  for (const combination of payload.combinations) {
+    const tally = repeated.get(combination.combination) ?? {
+      passed: 0,
+      of: 0,
+      axes: describeAxes(combination),
+    };
+    tally.of += 1;
+    if (combination.verdict === 'PASSED') {
+      tally.passed += 1;
+    }
+    repeated.set(combination.combination, tally);
+  }
+
+  // 반복이 없으면 조합 줄을 그대로 다시 적는 것이 되어 아무것도 더하지 않는다.
+  if ([...repeated.values()].every((tally) => tally.of === 1)) {
+    return;
+  }
+
+  sink.out('  by combination:');
+  for (const [combination, tally] of repeated) {
+    sink.out(
+      `    [${String(combination + 1)}] ${String(tally.passed)}/${String(tally.of)} passed  ${tally.axes}`,
+    );
+  }
+}
+
+/**
  * `qa matrix` 요약. 조합마다 한 줄이고, 축 값을 그대로 적는다 — arm 이름은 짓지 않는다.
  */
 export function printQaMatrix(sink: OutputSink, payload: QaMatrixPayload): void {
-  sink.out(
-    `QA matrix — ${String(payload.succeeded)}/${String(payload.total)} combinations passed.`,
-  );
+  sink.out(`QA matrix — ${String(payload.succeeded)}/${String(payload.total)} runs passed.`);
   sink.out(`  project        ${payload.projectId}`);
   sink.out(`  label          ${payload.label ?? '-'}`);
   payload.slots.forEach((build, slot) => {
@@ -237,11 +294,13 @@ export function printQaMatrix(sink: OutputSink, payload: QaMatrixPayload): void 
     );
   }
 
+  printRepeatTally(sink, payload);
+
   const failures = payload.combinations.filter((combination) => combination.verdict !== 'PASSED');
   if (failures.length === 0) {
     return;
   }
-  sink.out(`  ${String(failures.length)} combinations did not pass:`);
+  sink.out(`  ${String(failures.length)} runs did not pass:`);
   for (const combination of failures) {
     sink.out(
       `    [${String(combination.index + 1)}] ${describeAxes(combination)} — ${

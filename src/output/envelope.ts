@@ -4,11 +4,14 @@ import type {
   CaseDeletePayload,
   CaseListPayload,
   ContentMapScanPayload,
+  ContentMapViewPayload,
   DocumentUploadPayload,
   ErrorEnvelope,
   GameInstanceListPayload,
   GameLogoutPayload,
   GameStartPayload,
+  IssueListPayload,
+  IssueStatusChangePayload,
   LoginPayload,
   LogoutPayload,
   ProjectListPayload,
@@ -58,6 +61,9 @@ export type CommandPayload =
   | DocumentUploadPayload
   | ContentMapScanPayload
   | ProjectListPayload
+  | ContentMapViewPayload
+  | IssueListPayload
+  | IssueStatusChangePayload
   | QaListPayload
   | QaLabelsPayload
   | QaModelsPayload

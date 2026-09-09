@@ -2,13 +2,14 @@
 
 The command line interface for the ARTEL platform.
 
-> Early work. `artel auth status`, `artel auth logout`, the whole `artel qa`
-> group, `artel game start` and `artel game logout` work today, and
-> `ARTEL_TOKEN` is the credential path CI should use. `artel auth login` is
-> built against a `POST /api/auth/cli-tokens/exchange` endpoint the
-> orchestration server does not have yet, and `artel game start`/`artel game
-> logout` are built against a not-yet-settled SDK token mint endpoint — both
-> fail, saying exactly that, until the server side lands.
+> Early work, but the server side every command needs is in place. The two
+> endpoints this README used to call missing — `POST /api/auth/cli-tokens/exchange`
+> behind `artel auth login`, and `POST /api/auth/sdk-tokens` behind
+> `artel game start` — both exist in the orchestration server. Against a
+> deployment older than either, the command still fails saying exactly which
+> endpoint that server does not have, so pointing at an old host is not a
+> mystery. `ARTEL_TOKEN` remains the credential path CI should use: it needs no
+> browser.
 
 ## What it is for
 
@@ -16,17 +17,28 @@ Running a QA agent against a game, from a terminal or from CI, without opening
 the console in a browser.
 
 ```
-artel auth login
-artel project list
+artel auth login                                        # this machine's credential
+artel project list                                      # ids the other commands take
+artel doc upload --project <id> design.pdf              # the plan the agent reads
+artel case create --project <id> --file cases.json      # what the agent should check
+artel scenario create --project <id> --steps steps.json # how it should check it
+artel run create --project <id> --name smoke            # a set of scenarios
+artel run scenarios <run id> --project <id> --set <ids> # fill that set
 artel game start --build ./Build/Game.exe --project <id>
-artel game list --project <id>
-artel qa run --test-run <id> --instance <id>
+artel game list --project <id>                          # ids qa run takes
+artel qa run --test-run <id> --instance <id>            # start one, watch to a verdict
+artel qa matrix --test-run 1,2 --slot ... --slot ...    # many, spread over builds
 artel qa watch <run id>
 artel qa show <run id>
-artel qa cancel <run id>
-artel qa diff <config> <config>
+artel qa list --project <id>                            # find a run you lost
+artel qa diff <config> <config>                         # two configurations, compared
+artel issue list --project <id>                         # what the runs found
+artel map show --project <id> --build <id>              # what the agent could read
 artel game logout --build ./Build/Game.exe --project <id>
 ```
+
+`artel <group> --help` lists the rest of each group. Every group is real today;
+this README does not describe commands that do not exist.
 
 Every command that reports a result also takes `--json`, because the reader is
 as often a program or a coding agent as it is a person. That JSON shape is a
@@ -106,7 +118,8 @@ two full-screen games cover each other.
 
 The command waits until the build registers with the server, then prints the
 resulting game instance id and exits — the build itself keeps running. That id
-is what the QA commands (not yet built) take to address this run. If
+is what `artel qa run --instance` takes to address this run, and
+`artel game list` finds it again later. If
 registration does not happen within `--timeout` seconds (default 60), or the
 build exits first, the error says which and names the log file.
 
@@ -183,6 +196,49 @@ every rate the human table prints is derived from those sums with its
 denominator shown next to it. A cell whose axes are unknown (a run from before
 the server recorded them) never matches a selector that names an axis.
 
+## Reading the content map an arm ran against
+
+`--content-map-mode` is an axis `artel qa run` and `artel qa matrix` measure, so
+when the arm that had the map on did worse, the next question is whether the map
+was empty or wrong. **`artel map show --project <id> --build <id>`** answers the
+first half: how many scenes, scene edges, screen transitions and spec gaps the
+map holds, how many `evidence` features have been confirmed by a run, and what
+the last scan did.
+
+It distinguishes two kinds of nothing, because they need different next steps: a
+build with no `evidence` document registered at all, and one whose document is
+registered but has not been ingested into the map yet. `last scan` reads
+`none since the server started` when nothing has asked this build to scan since
+the server came up — that is not the same as the map having appeared without a
+scan.
+
+`--watch` follows the scan and ingest stream before reading. It follows a scan
+someone else started; **`artel doc scan` is what starts one.** The server never
+ends that stream on its own, so `--timeout` caps the wait.
+
+Regenerating test cases from the map is not here. That endpoint lives under
+`/internal/`, which is the server-to-server trust boundary — it carries no
+per-user access check, so a user tool must not call it.
+
+## Reading what a run found
+
+A QA run produces two things: a verdict, and the defects it found on the way.
+`artel issue` reads and settles the second. These are the run's findings, not
+Jira issues.
+
+**`artel issue list --project <id>`** names them newest first, each with the run
+and try it came from so `artel qa show <run id>` opens the context. `--status`
+and `--severity` are the server's own filters, so they narrow the whole project
+rather than the page that came back. The listing is a cursor page: when there is
+more, the output says so and prints the `--before` cursor that opens the next
+one.
+
+**`artel issue resolve <id>`** and **`artel issue reopen <id>`** change the mark.
+The server answers these with an empty `204`, so `--json` reports what the CLI
+knows — which issue, which action, and the status that action means — rather than
+a re-read of the issue. There is no endpoint that returns one issue, so
+`artel issue list` is how you check.
+
 ## Running a matrix of configurations
 
 **`artel qa matrix`** expands the cartesian product of the axis lists and runs
@@ -192,6 +248,7 @@ every combination, spread over several game builds:
 artel qa matrix \
   --project 1 \
   --test-run 1,2 \
+  --model openai/gpt-5.6-luna \
   --content-map-mode off,frozen \
   --knowledge-mode off \
   --label 2x2-local-pilot \
@@ -199,12 +256,37 @@ artel qa matrix \
   --slot /path/to/BuildB/WordVenture.exe
 ```
 
-That is 2 test runs × 2 content map modes × 1 knowledge mode = 4 runs, spread
-over 2 slots. The product is expanded in the order the flags name the axes, and
+That is 2 test runs × 1 model × 2 content map modes × 1 knowledge mode = 4 runs,
+spread over 2 slots. The product is expanded in a fixed order — test run, model,
+prompt version, reasoning effort, content map mode, knowledge mode — and
 combination *i* goes to slot *i mod slots*, so running the same command twice
-sends the same combination to the same slot. A work-stealing queue would finish
+sends the same combination to the same slot.
+
+**An axis given one value is pinned, not multiplied.** `--model` above does not
+add combinations; it makes every run use that model. That is the reason to pass
+it even when you are not comparing models: leave it out and the server picks per
+run, so a default that changes while the matrix is running puts two models in one
+table and nothing in the output says so.
+
+`--model`, `--prompt-version` and `--reasoning-effort` are the same axes
+`artel qa diff` selects on, so a matrix can now produce the runs that diff
+compares. `artel qa models` lists the ids and the efforts each model takes.
+
+`--reasoning-max-tokens` and `--arch` are fixed values for the whole matrix
+rather than axes. The token budget only means something under a chosen model and
+effort, so multiplying it against those two produces combinations that do not go
+together; `--arch` is one JSON object and cannot be split on commas. A work-stealing queue would finish
 sooner but would decide that by timing, and which build a run happened on is part
 of the measurement.
+
+**`--repeat n` runs each combination n times.** A QA run is not deterministic:
+the same configuration twice does not give the same result. A table with one run
+per cell cannot tell whether the difference you see came from the arm or from
+that day's luck. The runs stay separate in the output — each carries the
+combination it belongs to and which repeat it was — and the human summary adds a
+line per combination saying how many of its runs passed. The CLI counts; it does
+not average. What sits on top of that count is for whatever reads the list, the
+same way `artel qa diff` hands out sums rather than ratios.
 
 **A slot runs one QA run at a time.** Two runs on one game instance do not
 overlap — the second ends the first, and the server only allows that with
@@ -228,6 +310,23 @@ finds the instance a launch registered by diffing the project's instance list
 before and against after, and two launches registering at the same moment land in
 the same diff. Registration takes seconds and a run takes minutes, so the wait
 costs almost nothing.
+
+**`--out <path>` writes each finished run to a file the moment it finishes,** one
+JSON object per line. A matrix that dies at run 7 of 12 leaves the first 6
+readable; without it those verdicts existed only in output that is now gone.
+`--resume` then skips the runs already in that file and runs the rest, and the
+final result is the same shape either way.
+
+`--resume` takes no path of its own — it resumes the file `--out` writes.
+Reading one file while writing another would be a state nobody can say the
+meaning of.
+
+A run is recognised by its axis values and its repeat number, not by where it sat
+in the expansion order. Add one `--model` and every combination's position
+shifts, so a position-based key would make `--resume` skip a run that never
+happened. If the file holds a run the current axes would never produce, the
+command stops before launching anything: resuming onto another experiment's file
+would put two experiments in one table.
 
 **One failed combination does not stop the others.** The failure is recorded
 against that combination, the slot moves on to its next one, and the summary

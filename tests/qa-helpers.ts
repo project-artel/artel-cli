@@ -65,6 +65,22 @@ export interface FakeQaServerOptions {
   createFailsWith?: { status: number; body: string };
   /** 주면 `POST /api/qa-runs/{id}/cancel` 이 이 status 와 body 로 실패한다. */
   cancelFailsWith?: { status: number; body: string };
+  /**
+   * try id 별 지출. 여기 없는 try 는 404 다 — 서버도 기록이 없으면 404 를 낸다.
+   * 아예 주지 않으면 이 경로 전체가 404 이고, 그것이 사용량 조회가 실패하는 경우다.
+   */
+  usage?: Record<string, FakeUsageTotals>;
+}
+
+/** `LlmUsageTotals` 와 같은 모양. */
+export interface FakeUsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  reasoningTokens: number;
+  costUsd: number | null;
+  calls: number;
+  pricedCalls: number;
 }
 
 export interface FakeQaServer {
@@ -185,6 +201,32 @@ export async function startFakeQaServer(options: FakeQaServerOptions): Promise<F
       if (ended) {
         closeStream(open, stream);
       }
+      return;
+    }
+
+    const usageMatch = /^\/api\/llm-usage\/qa-runs\/([^/]+)$/.exec(url.pathname);
+    if (method === 'GET' && usageMatch) {
+      const totals = options.usage?.[decodeURIComponent(usageMatch[1] ?? '')];
+      if (totals === undefined) {
+        response.writeHead(404, { 'content-type': 'application/json' });
+        response.end('{"code":"not_found","message":"no usage for that try"}');
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          qaTryId: decodeURIComponent(usageMatch[1] ?? ''),
+          projectId: '1',
+          status: 'COMPLETED',
+          startedAt: '2026-09-08T05:00:00Z',
+          completedAt: '2026-09-08T05:04:00Z',
+          model: null,
+          reasoningEffort: null,
+          promptVersion: null,
+          agentArch: null,
+          totals,
+        }),
+      );
       return;
     }
 

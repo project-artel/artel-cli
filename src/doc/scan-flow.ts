@@ -78,9 +78,13 @@ export async function scanContentMap(
  * 구독 직후 오는 `snapshot` 이 이미 종단이면 거기서 끝난다 — 짧은 스캔은 202 를 받고 붙는
  * 사이에 이미 끝나 있을 수 있고, 그때 `scan` frame 은 다시 오지 않는다.
  */
-async function watchScan(
+export async function watchScan(
   options: ScanContentMapOptions,
-  requested: ContentMapScanStatus,
+  /**
+   * 이 명령이 방금 시킨 스캔. `map show --watch` 처럼 남이 시킨 스캔을 따라갈 때는 `null` 이고,
+   * 그때 timeout 메시지가 게임 이름을 대지 못한다 — 그 값은 시킨 쪽의 응답에만 있다.
+   */
+  requested: ContentMapScanStatus | null,
 ): Promise<ContentMapScanStatus> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const reconnectDelaysMs = options.reconnectDelaysMs ?? DEFAULT_SCAN_RECONNECT_DELAYS_MS;
@@ -122,7 +126,7 @@ async function watchScan(
     onTimeout: () =>
       new CliError(
         'content_map_watch_timeout',
-        `Stopped watching the scan of game build ${options.gameBuildId} after ${String(Math.round(options.timeoutMs / 1_000))}s. Game instance ${requested.gameInstanceName} still has the command; raise --timeout, or run the command again without --watch and read the content map later.`,
+        `Stopped watching the scan of game build ${options.gameBuildId} after ${String(Math.round(options.timeoutMs / 1_000))}s. ${requested === null ? 'The scan' : `Game instance ${requested.gameInstanceName}`} still has the command; raise --timeout, or stop watching and read the content map later.`,
       ),
     onDisconnected: (attempts) =>
       new CliError(

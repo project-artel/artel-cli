@@ -13,6 +13,14 @@ import { cancelQaRun, createQaRun } from '../../http/qa.js';
 import type { QaMatrixCombinationPayload, QaMatrixPayload } from '../../output/contract.js';
 import { writeJsonPayload, type OutputSink } from '../../output/envelope.js';
 import { describeFollowEvent, printQaMatrix } from '../../output/human.js';
+import { readArch } from '../../qa/arch.js';
+import {
+  appendRun,
+  keyOfCombination,
+  readJournal,
+  rejectForeignRuns,
+  runKey,
+} from '../../qa/journal.js';
 import type { QaContext } from '../../qa/context.js';
 import type { QaFollowEvent } from '../../qa/follow.js';
 import {
@@ -28,8 +36,33 @@ export interface QaMatrixCommandOptions {
   json: boolean;
   project: string;
   testRunIds: readonly string[];
+  models: readonly AxisValue[];
+  promptVersions: readonly AxisValue[];
+  reasoningEfforts: readonly AxisValue[];
   contentMapModes: readonly AxisValue[];
   knowledgeModes: readonly AxisValue[];
+  /**
+   * 전 조합에 걸리는 고정값. 축이 아니다.
+   *
+   * `--reasoning-max-tokens` 는 model 과 effort 가 정해진 뒤의 예산이라, 그 둘을 축으로 두고
+   * 이것까지 축으로 두면 서로 맞지 않는 조합이 곱해진다. `--arch` 는 JSON object 하나여서
+   * 쉼표로 가를 수 없다 — 목록으로 받으려면 파일 여러 개를 받는 다른 flag 모양이 필요하고,
+   * 그것은 이 이슈가 푸는 문제가 아니다.
+   */
+  reasoningMaxTokens?: number | undefined;
+  /**
+   * 조합 하나를 몇 번 돌릴지. 1 이면 지금 동작 그대로다.
+   *
+   * QA agent 의 런은 결정적이지 않다. 조합당 한 번씩 돌린 표로 두 arm 을 비교하면, 본 차이가
+   * arm 때문인지 그날의 운인지 구분할 수 없다.
+   */
+  repeats: number;
+  /** `--out`. 런이 끝날 때마다 여기에 한 줄씩 붙인다. */
+  out?: string | undefined;
+  /** `--resume`. [out] 에 이미 있는 런을 건너뛴다. */
+  resume: boolean;
+  /** `--arch` 의 원문. JSON object 이거나 `@경로`. */
+  arch?: string | undefined;
   label?: string | undefined;
   /** `--slot` 을 적은 순서. 첨자가 슬롯 번호다. */
   slots: readonly string[];
@@ -99,28 +132,60 @@ export async function runQaMatrix(
     cliToken: resolution.credential.token,
   };
 
-  const combinations = expandCombinations({
-    testRunIds: options.testRunIds,
-    contentMapModes: options.contentMapModes,
-    knowledgeModes: options.knowledgeModes,
-  });
+  const combinations = expandCombinations(
+    {
+      testRunIds: options.testRunIds,
+      models: options.models,
+      promptVersions: options.promptVersions,
+      reasoningEfforts: options.reasoningEfforts,
+      contentMapModes: options.contentMapModes,
+      knowledgeModes: options.knowledgeModes,
+    },
+    options.repeats,
+  );
   const slots = assignToSlots(combinations, options.slots.length);
   const total = combinations.length;
 
+  // 슬롯당 대기열 길이까지 말한다. 축이 다섯이 되면서 조합 수가 곱으로 늘어나고, 슬롯 하나가
+  // 몇 개를 차례로 돌아야 하는지가 이 명령이 몇 시간짜리인지를 정한다 — 시작하기 전에 그것을
+  // 보고 그만둘 수 있어야 한다.
+  // 이어 돌릴 것을 먼저 읽는다. 축이 어긋나면 게임을 하나도 띄우기 전에 멈춰야 한다.
+  const done = new Map<string, QaMatrixCombinationPayload>();
+  if (options.resume && options.out !== undefined) {
+    const journal = await readJournal(options.out);
+    rejectForeignRuns(options.out, journal, combinations);
+    for (const run of journal) {
+      done.set(runKey(run), run);
+    }
+    if (done.size > 0) {
+      sink.err(`Resuming: ${String(done.size)} run(s) already in ${options.out}.`);
+    }
+  }
+
+  const longestQueue = Math.max(...slots.map((assigned) => assigned.length));
+  const runs =
+    options.repeats === 1
+      ? `${String(total)} combinations`
+      : `${String(total)} runs (${String(total / options.repeats)} combinations × ${String(options.repeats)})`;
   sink.err(
-    `Running ${String(combinations.length)} combinations over ${String(options.slots.length)} slots.`,
+    `Running ${runs} over ${String(options.slots.length)} slots — up to ${String(longestQueue)} in a row on one slot.`,
   );
 
   // 전개 순서대로 자리를 미리 잡아 둔다. 슬롯이 병렬로 끝나므로, 끝난 순서대로 밀어 넣으면
   // 같은 명령이 매번 다른 순서의 payload 를 낸다.
   const results = new Array<QaMatrixCombinationPayload | null>(combinations.length).fill(null);
   const launchGate = createLaunchGate();
+  // 한 번만 읽는다. 조합마다 다시 읽으면 matrix 가 도는 중에 파일이 바뀌었을 때 앞뒤 조합이
+  // 다른 구조로 돌고, 그 차이는 결과 어디에도 남지 않는다.
+  const arch = await readArch(options.arch);
 
   await Promise.all(
     slots.map((assigned, slot) =>
       runSlot(assigned, slot, total, options, context, config.consoleBaseUrl, env, sink, results, {
         makeStartDeps,
         launchGate,
+        done,
+        ...(arch === undefined ? {} : { arch }),
         ...(fetchImpl === undefined ? {} : { fetchImpl }),
       }),
     ),
@@ -152,6 +217,13 @@ export async function runQaMatrix(
 interface SlotDeps {
   makeStartDeps: (notify: (message: string) => void) => GameStartDeps;
   fetchImpl?: FetchLike | undefined;
+  /** `--resume` 이 읽어 둔, 이미 끝난 런. 열쇠는 축 값과 반복 번호다. */
+  done: ReadonlyMap<string, QaMatrixCombinationPayload>;
+  /**
+   * `--arch` 를 읽어 둔 값. 조합마다 다시 읽지 않는다 — 파일을 매번 읽으면 matrix 가 도는
+   * 중에 그 파일이 바뀌었을 때 앞뒤 조합이 다른 구조로 돌고, 그 차이는 결과 어디에도 안 남는다.
+   */
+  arch?: unknown;
   /** 등록을 한 번에 하나씩만 시키는 문. [createLaunchGate] 참고. */
   launchGate: LaunchGate;
 }
@@ -198,7 +270,18 @@ async function runSlot(
   }
 
   for (const combination of assigned) {
-    results[combination.index] = await runCombination(
+    // 이미 끝난 런은 게임을 띄우지 않고 파일에서 읽은 결과를 그대로 쓴다. 다시 돌리면 서버에
+    // 같은 설정의 런이 둘 생기고, 그 둘 중 어느 것이 표에 들어갔는지 알 수 없게 된다.
+    const already = deps.done.get(keyOfCombination(combination));
+    if (already !== undefined) {
+      sink.err(
+        `[slot ${String(slot)}] run ${String(combination.index + 1)}/${String(total)}: already in the journal (run ${already.qaRunId ?? '-'}), skipping.`,
+      );
+      results[combination.index] = already;
+      continue;
+    }
+
+    const result = await runCombination(
       combination,
       slot,
       total,
@@ -210,6 +293,12 @@ async function runSlot(
       sink,
       deps,
     );
+    results[combination.index] = result;
+
+    // 런이 끝난 직후에 적는다. 모아 두었다가 끝에 쓰면 이 기능이 푸는 문제가 그대로 남는다.
+    if (options.out !== undefined) {
+      await appendRun(options.out, result);
+    }
   }
 }
 
@@ -230,14 +319,19 @@ async function runCombination(
     sink.err(`[slot ${String(slot)}] ${message}`);
   };
   progress(
-    `combination ${String(combination.index + 1)}/${String(total)}: ${describeCombination(combination)}`,
+    `run ${String(combination.index + 1)}/${String(total)}: ${describeCombination(combination, options.repeats)}`,
   );
 
   const base = {
     index: combination.index,
+    combination: combination.combination,
+    repeat: combination.repeat,
     slot,
     build,
     testRunId: combination.testRunId,
+    model: combination.model,
+    promptVersion: combination.promptVersion,
+    reasoningEffort: combination.reasoningEffort,
     contentMapMode: combination.contentMapMode,
     knowledgeMode: combination.knowledgeMode,
   };
@@ -277,6 +371,21 @@ async function runCombination(
         testRunId: combination.testRunId,
         gameInstanceId: started.instance.id,
         // 안 준 축은 키 자체를 싣지 않는다. 빈 문자열은 서버가 값으로 읽어 400 이 된다.
+        ...(combination.model === null ? {} : { model: combination.model }),
+        ...(combination.promptVersion === null ? {} : { promptVersion: combination.promptVersion }),
+        ...(combination.reasoningEffort === null && options.reasoningMaxTokens === undefined
+          ? {}
+          : {
+              reasoning: {
+                ...(combination.reasoningEffort === null
+                  ? {}
+                  : { effort: combination.reasoningEffort }),
+                ...(options.reasoningMaxTokens === undefined
+                  ? {}
+                  : { maxTokens: options.reasoningMaxTokens }),
+              },
+            }),
+        ...(deps.arch === undefined ? {} : { arch: deps.arch }),
         ...(combination.contentMapMode === null
           ? {}
           : { contentMapMode: combination.contentMapMode }),
@@ -320,6 +429,7 @@ async function runCombination(
       verdict: finished.verdict,
       stepsPassed: finished.steps.passed,
       stepsTotal: finished.steps.total,
+      usage: finished.usage,
       durationMs: Date.now() - startedAt,
       error: null,
     };
@@ -343,6 +453,7 @@ async function runCombination(
       verdict: null,
       stepsPassed: null,
       stepsTotal: null,
+      usage: null,
       durationMs: Date.now() - startedAt,
       error: failure,
     };

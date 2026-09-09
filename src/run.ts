@@ -15,6 +15,9 @@ import { runDocUpload } from './commands/doc/upload.js';
 import { runGameList } from './commands/game/list.js';
 import { runGameLogout } from './commands/game/logout.js';
 import { runGameStart } from './commands/game/start.js';
+import { runIssueList } from './commands/issue/list.js';
+import { runMapShow } from './commands/map/show.js';
+import { runIssueStatusChange } from './commands/issue/status.js';
 import { runProjectList } from './commands/project/list.js';
 import { runQaCancel } from './commands/qa/cancel.js';
 import { runQaDiff } from './commands/qa/diff.js';
@@ -30,6 +33,7 @@ import { DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH } from './game/launch-args.
 import { DEFAULT_LOGOUT_TIMEOUT_MS } from './game/logout-flow.js';
 import { DEFAULT_REGISTRATION_TIMEOUT_MS } from './game/start-flow.js';
 import { MAX_PROJECT_PAGE_SIZE } from './http/projects.js';
+import { DEFAULT_ISSUE_PAGE_SIZE } from './http/issues.js';
 import { DEFAULT_QA_TRY_LIST_SIZE, MAX_QA_TRY_LIST_SIZE } from './http/qa.js';
 import { processSink, writeErrorEnvelope, type OutputSink } from './output/envelope.js';
 import { cliVersionForDisplay } from './version.js';
@@ -501,6 +505,40 @@ export async function runCli(
       [],
     )
     .option(
+      '--model <ids>',
+      'comma-separated models, one axis of the product; one value pins the model across every combination. "artel qa models" lists the ids. Omit and the server picks per run — which means a default that changes mid-matrix puts two models in one table',
+    )
+    .option(
+      '--prompt-version <versions>',
+      'comma-separated prompt versions, one axis of the product; one value pins it across every combination',
+    )
+    .option(
+      '--reasoning-effort <efforts>',
+      'comma-separated reasoning efforts, one axis of the product; the values depend on the model and "artel qa models" lists them',
+    )
+    .option(
+      '--repeat <n>',
+      'runs per combination. A QA run is not deterministic, so one run per cell cannot tell an arm apart from a lucky day',
+      '1',
+    )
+    .option(
+      '--out <path>',
+      'append each finished run to this file as one JSON line, the moment it finishes. A matrix that dies partway leaves everything before that point readable',
+    )
+    .option(
+      '--resume',
+      'skip the runs already in --out and keep the rest. It takes no path of its own: reading one file and writing another would be a state nobody can say the meaning of',
+      false,
+    )
+    .option(
+      '--reasoning-max-tokens <n>',
+      'reasoning token budget for every combination. Not an axis: it is the budget under a model and an effort, so multiplying it against those two produces combinations that do not go together',
+    )
+    .option(
+      '--arch <json>',
+      "the agent's structure for every combination: a JSON object, or @path naming a file that holds one. Not an axis: one JSON object cannot be split on commas",
+    )
+    .option(
       '--content-map-mode <modes>',
       `comma-separated content map modes, one axis of the product: ${CONTENT_MAP_MODES.join(' | ')}; omit to let the server choose`,
     )
@@ -532,6 +570,14 @@ export async function runCli(
         project: string;
         testRun: string;
         slot: string[];
+        model?: string | undefined;
+        promptVersion?: string | undefined;
+        reasoningEffort?: string | undefined;
+        repeat: string;
+        out?: string | undefined;
+        resume: boolean;
+        reasoningMaxTokens?: string | undefined;
+        arch?: string | undefined;
         contentMapMode?: string | undefined;
         knowledgeMode?: string | undefined;
         label?: string | undefined;
@@ -544,6 +590,10 @@ export async function runCli(
         consoleUrl?: string | undefined;
       }) => {
         json = options.json;
+        // 읽을 파일이 곧 쓸 파일이다. `--out` 이 없으면 `--resume` 은 가리킬 것이 없다.
+        if (options.resume && options.out === undefined) {
+          throw new UsageError('--resume needs --out: it resumes the file --out writes.');
+        }
         exitCode = await runQaMatrix(
           {
             json: options.json,
@@ -551,6 +601,32 @@ export async function runCli(
             testRunIds: parseAxisList(options.testRun, '--test-run'),
             // 축 flag 를 안 주면 그 축은 값 하나짜리이고 그 값은 "안 준 것"(null)이다.
             // 조합은 그대로 하나 생기고, body 에는 그 키가 실리지 않아 서버 기본값으로 돈다.
+            //
+            // 이 셋은 값 목록을 CLI 가 모른다. `--content-map-mode` 처럼 미리 거절하지 못하고
+            // 서버가 아는 목록은 `artel qa models` 로 본다.
+            models:
+              options.model === undefined ? [null] : parseAxisList(options.model, '--model'),
+            promptVersions:
+              options.promptVersion === undefined
+                ? [null]
+                : parseAxisList(options.promptVersion, '--prompt-version'),
+            reasoningEfforts:
+              options.reasoningEffort === undefined
+                ? [null]
+                : parseAxisList(options.reasoningEffort, '--reasoning-effort'),
+            repeats: parsePositiveInt(options.repeat, '--repeat'),
+            out: options.out,
+            resume: options.resume,
+            // 축이 아니라 전 조합에 걸리는 고정값이다. 이유는 `--help` 에 적혀 있다.
+            ...(options.reasoningMaxTokens === undefined
+              ? {}
+              : {
+                  reasoningMaxTokens: parsePositiveInt(
+                    options.reasoningMaxTokens,
+                    '--reasoning-max-tokens',
+                  ),
+                }),
+            arch: options.arch,
             contentMapModes:
               options.contentMapMode === undefined
                 ? [null]
@@ -1266,6 +1342,134 @@ export async function runCli(
 
   const DOC_CONSOLE_URL_HELP =
     'console base URL; doc commands never call the console, so this is accepted and unused';
+
+  const issue = program
+    .command('issue')
+    .description(
+      "Read and settle the defects a QA run found. These are the run's findings, not Jira issues",
+    );
+
+  issue
+    .command('list')
+    .description("List a project's issues, newest first")
+    .requiredOption('--project <id>', 'project whose issues to list')
+    .option('--status <status>', 'keep only OPEN or RESOLVED issues; the server does the filtering')
+    .option('--severity <severity>', 'keep only issues of this severity')
+    .option(
+      '--before <id>',
+      'read the page before this issue id; use the cursor the last page printed',
+    )
+    .option('--limit <n>', 'issues per page', String(DEFAULT_ISSUE_PAGE_SIZE))
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (options: {
+        project: string;
+        status?: string | undefined;
+        severity?: string | undefined;
+        before?: string | undefined;
+        limit: string;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runIssueList(
+          {
+            json: options.json,
+            project: options.project,
+            limit: parsePositiveInt(options.limit, '--limit'),
+            status: options.status,
+            severity: options.severity,
+            before: options.before,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  issue
+    .command('resolve')
+    .description('Mark an issue resolved')
+    .argument('<issue-id>', 'issue to resolve')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(async (issueId: string, options: { json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runIssueStatusChange(
+        issueId,
+        'resolve',
+        { json: options.json, apiUrl: options.apiUrl },
+        sink,
+        env,
+      );
+    });
+
+  issue
+    .command('reopen')
+    .description('Undo a resolved mark, so the issue counts as open again')
+    .argument('<issue-id>', 'issue to reopen')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(async (issueId: string, options: { json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runIssueStatusChange(
+        issueId,
+        'reopen',
+        { json: options.json, apiUrl: options.apiUrl },
+        sink,
+        env,
+      );
+    });
+
+  const map = program
+    .command('map')
+    .description(
+      'Read the content map a build has. "artel doc scan" is what fills it; this reads what is there',
+    );
+
+  map
+    .command('show')
+    .description("Summarise a build's content map: scenes, transitions, gaps, and the last scan")
+    .requiredOption('--project <id>', 'project the game build belongs to')
+    .requiredOption('--build <id>', 'game build whose content map to read')
+    .option(
+      '--watch',
+      'follow the scan and ingest progress before reading. It follows a scan someone else started; it does not start one',
+      false,
+    )
+    .option(
+      '--timeout <seconds>',
+      'seconds to keep watching; 0 waits with no limit. The server never ends this stream on its own',
+      String(DEFAULT_DOC_TIMEOUT_SECONDS),
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (options: {
+        project: string;
+        build: string;
+        watch: boolean;
+        timeout: string;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runMapShow(
+          {
+            json: options.json,
+            project: options.project,
+            build: options.build,
+            watch: options.watch,
+            timeoutSeconds: parseTimeoutSeconds(options.timeout),
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
 
   const doc = program
     .command('doc')

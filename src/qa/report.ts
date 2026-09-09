@@ -1,4 +1,5 @@
 import type { FetchLike } from '../http/client.js';
+import { getQaTryUsage, type LlmUsageTotals } from '../http/llmUsage.js';
 import {
   getQaTryLogTail,
   isTerminalStatus,
@@ -14,6 +15,7 @@ import {
   UNKNOWN_COUNTS,
   type QaTerminalFrame,
 } from './verdict.js';
+import { sumUsage, toUsagePayload } from './usage.js';
 
 /**
  * 종단 frame 을 찾으러 읽는 로그 페이지 크기. 서버의 stream 은 종단 frame 에서 멈춰 그 뒤로
@@ -37,8 +39,17 @@ export async function buildQaRunPayload(
   run: QaRun,
   fetchImpl?: FetchLike,
 ): Promise<QaRunPayload> {
+  const usages = await Promise.all(
+    run.tries.map((qaTry) =>
+      qaTry.status === 'PENDING'
+        ? Promise.resolve<LlmUsageTotals | null>(null)
+        : readUsage(apiBaseUrl, cliToken, qaTry.id, fetchImpl),
+    ),
+  );
   const tries = await Promise.all(
-    run.tries.map((qaTry) => buildTryPayload(apiBaseUrl, cliToken, qaTry, fetchImpl)),
+    run.tries.map((qaTry, index) =>
+      buildTryPayload(apiBaseUrl, cliToken, qaTry, usages[index] ?? null, fetchImpl),
+    ),
   );
   const issues = await Promise.all(
     run.tries.map((qaTry) =>
@@ -60,6 +71,7 @@ export async function buildQaRunPayload(
     cases: sumCounts(tries.map((qaTry) => qaTry.cases)),
     tries,
     issues: issues.flat(),
+    usage: sumUsage(usages),
   };
 }
 
@@ -67,6 +79,7 @@ async function buildTryPayload(
   apiBaseUrl: string,
   cliToken: string,
   qaTry: QaTry,
+  usage: LlmUsageTotals | null,
   fetchImpl?: FetchLike,
 ): Promise<QaTryPayload> {
   const frame = isTerminalStatus(qaTry.status)
@@ -88,7 +101,24 @@ async function buildTryPayload(
     steps: frame?.steps ?? UNKNOWN_COUNTS,
     cases: frame?.cases ?? UNKNOWN_COUNTS,
     stepResults: frame?.stepResults ?? [],
+    usage: toUsagePayload(usage),
   };
+}
+
+/**
+ * 사용량을 못 읽어도 런 보고는 실패하지 않는다.
+ *
+ * 판정을 읽는 것과 비용을 읽는 것은 다른 질문이다. 비용 endpoint 가 404 이거나 죽었다고
+ * `qa show` 가 판정을 못 내면, 그 런이 통과했는지 물으러 온 사람이 답을 못 받는다. 읽지 못한
+ * 것은 `null` 로 남고, 그것은 지출이 0 이었다는 뜻이 아니다.
+ */
+async function readUsage(
+  apiBaseUrl: string,
+  cliToken: string,
+  qaTryId: string,
+  fetchImpl?: FetchLike,
+): Promise<LlmUsageTotals | null> {
+  return getQaTryUsage(apiBaseUrl, cliToken, qaTryId, fetchImpl).catch(() => null);
 }
 
 async function readTerminalFrameOf(

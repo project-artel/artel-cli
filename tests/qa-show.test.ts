@@ -26,6 +26,7 @@ const QA_RUN_KEYS = [
   'steps',
   'testRunId',
   'tries',
+  'usage',
   'verdict',
 ];
 
@@ -43,6 +44,7 @@ const QA_TRY_KEYS = [
   'steps',
   'testScenarioId',
   'tryId',
+  'usage',
   'verdict',
 ];
 

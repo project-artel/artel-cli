@@ -1,11 +1,14 @@
+import fs from 'node:fs/promises';
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runQaMatrix } from '../src/commands/qa/matrix.js';
 import { runQaRun } from '../src/commands/qa/run.js';
 import type { GameProcessSpawner } from '../src/game/process.js';
 import type { GameStartDeps } from '../src/game/start-flow.js';
+import type { CliError } from '../src/errors.js';
 import type { QaMatrixPayload } from '../src/output/contract.js';
-import { assignToSlots, expandCombinations } from '../src/qa/matrix.js';
+import { assignToSlots, expandCombinations, type MatrixAxes } from '../src/qa/matrix.js';
 import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, runCli } from '../src/run.js';
 import { createMemorySink, createTempConfig, type TempConfig } from './helpers.js';
 import { startFakeMatrixServer, type FakeMatrixServer } from './matrix-helpers.js';
@@ -25,16 +28,29 @@ afterEach(async () => {
   await temp.cleanup();
 });
 
+/** 축을 안 준 자리를 `[null]` 로 채운다. 그 축은 서버 기본값으로 한 번만 돈다. */
+function axes(partial: Partial<MatrixAxes>): MatrixAxes {
+  return {
+    testRunIds: ['1'],
+    models: [null],
+    promptVersions: [null],
+    reasoningEfforts: [null],
+    contentMapModes: [null],
+    knowledgeModes: [null],
+    ...partial,
+  };
+}
+
 describe('expandCombinations', () => {
-  it('walks the axes in the order the flags were written, every time', () => {
-    const axes = {
+  it('walks the axes in the order they are declared, every time', () => {
+    const given = axes({
       testRunIds: ['1', '2'],
       contentMapModes: ['off', 'frozen'],
       knowledgeModes: ['off'],
-    };
+    });
 
-    const first = expandCombinations(axes);
-    const second = expandCombinations(axes);
+    const first = expandCombinations(given);
+    const second = expandCombinations(given);
 
     expect(first.map((combination) => [combination.testRunId, combination.contentMapMode])).toEqual(
       [
@@ -48,16 +64,92 @@ describe('expandCombinations', () => {
     expect(first.map((combination) => combination.index)).toEqual([0, 1, 2, 3]);
   });
 
+  /**
+   * `qa diff` 는 model 축으로 비교할 수 있는데 그 축으로 런을 만드는 수단이 없었다. 이 축이
+   * 실제로 곱해지는지가 그 구멍이 막혔다는 증거다.
+   */
+  it('multiplies the model axis with the others', () => {
+    const combinations = expandCombinations(
+      axes({
+        models: ['openai/gpt-5.6-luna', 'anthropic/claude-haiku'],
+        contentMapModes: ['off', 'frozen'],
+      }),
+    );
+
+    expect(combinations).toHaveLength(4);
+    expect(
+      combinations.map((combination) => [combination.model, combination.contentMapMode]),
+    ).toEqual([
+      ['openai/gpt-5.6-luna', 'off'],
+      ['openai/gpt-5.6-luna', 'frozen'],
+      ['anthropic/claude-haiku', 'off'],
+      ['anthropic/claude-haiku', 'frozen'],
+    ]);
+  });
+
+  /**
+   * 값이 하나면 그 축은 조합을 늘리지 않고 전 조합에 고정된다. 축으로 주지 않으면 서버가 매
+   * 런마다 자기 기본값을 고르고, 그 기본값이 도는 중에 바뀌면 서로 다른 model 로 돈 결과가 한
+   * 표에 섞인다 — 그것이 이 이슈가 막으려는 것이다.
+   */
+  it('pins an axis given exactly one value across every combination', () => {
+    const combinations = expandCombinations(
+      axes({
+        testRunIds: ['1', '2'],
+        models: ['openai/gpt-5.6-luna'],
+      }),
+    );
+
+    expect(combinations).toHaveLength(2);
+    expect(combinations.every((c) => c.model === 'openai/gpt-5.6-luna')).toBe(true);
+  });
+
+  /**
+   * QA agent 의 런은 결정적이지 않다. 조합당 한 번씩 돌린 표로 두 arm 을 비교하면, 본 차이가
+   * arm 때문인지 그날의 운인지 구분할 수 없다.
+   */
+  it('repeats each combination the asked number of times', () => {
+    const combinations = expandCombinations(axes({ testRunIds: ['1', '2'] }), 3);
+
+    expect(combinations).toHaveLength(6);
+    expect(combinations.map((c) => [c.combination, c.repeat])).toEqual([
+      [0, 0],
+      [0, 1],
+      [0, 2],
+      [1, 0],
+      [1, 1],
+      [1, 2],
+    ]);
+  });
+
+  /**
+   * 반복을 축으로 두면 `--repeat` 을 켜는 것만으로 조합 번호와 슬롯 배정이 통째로 달라진다.
+   * 가장 안쪽에 두면 `--repeat 1` 일 때의 번호가 그대로 유지된다.
+   */
+  it('leaves the numbering of a single-run matrix untouched', () => {
+    const given = axes({ testRunIds: ['1', '2'], contentMapModes: ['off', 'frozen'] });
+
+    expect(expandCombinations(given, 1)).toEqual(expandCombinations(given));
+  });
+
+  it('gives the repeats of one combination the same axis values', () => {
+    const combinations = expandCombinations(axes({ models: ['openai/gpt-5.6-luna'] }), 2);
+
+    expect(combinations).toHaveLength(2);
+    expect(combinations[0]?.model).toBe(combinations[1]?.model);
+    expect(combinations[0]?.combination).toBe(combinations[1]?.combination);
+    expect(combinations[0]?.repeat).not.toBe(combinations[1]?.repeat);
+  });
+
   it('keeps an axis with no flag as a single combination that names no value', () => {
     // `null` 은 그 축의 flag 를 주지 않았다는 뜻이다. 조합은 그대로 하나 생기고, body 에는
     // 그 키가 실리지 않아 서버가 자기 기본값을 쓴다.
-    const combinations = expandCombinations({
-      testRunIds: ['1'],
-      contentMapModes: [null],
-      knowledgeModes: [null],
-    });
+    const combinations = expandCombinations(axes({}));
 
     expect(combinations).toHaveLength(1);
+    expect(combinations[0]?.model).toBeNull();
+    expect(combinations[0]?.promptVersion).toBeNull();
+    expect(combinations[0]?.reasoningEffort).toBeNull();
     expect(combinations[0]?.contentMapMode).toBeNull();
     expect(combinations[0]?.knowledgeMode).toBeNull();
   });
@@ -65,11 +157,13 @@ describe('expandCombinations', () => {
 
 describe('assignToSlots', () => {
   it('sends the same combination to the same slot on every run', () => {
-    const combinations = expandCombinations({
-      testRunIds: ['1', '2'],
-      contentMapModes: ['off', 'frozen'],
-      knowledgeModes: ['off'],
-    });
+    const combinations = expandCombinations(
+      axes({
+        testRunIds: ['1', '2'],
+        contentMapModes: ['off', 'frozen'],
+        knowledgeModes: ['off'],
+      }),
+    );
 
     const first = assignToSlots(combinations, 2).map((slot) =>
       slot.map((combination) => combination.index),
@@ -85,12 +179,28 @@ describe('assignToSlots', () => {
     expect(second).toEqual(first);
   });
 
+  /** 반복을 켜도 배정이 결정적이어야 한다. 그래야 같은 명령 두 번의 결과를 나란히 놓는다. */
+  it('sends the repeats of one combination to the same slots on every run', () => {
+    const combinations = expandCombinations(axes({ testRunIds: ['1', '2'] }), 3);
+
+    const first = assignToSlots(combinations, 2).map((slot) =>
+      slot.map((combination) => [combination.combination, combination.repeat]),
+    );
+    const second = assignToSlots(combinations, 2).map((slot) =>
+      slot.map((combination) => [combination.combination, combination.repeat]),
+    );
+
+    expect(second).toEqual(first);
+  });
+
   it('gives every combination exactly one slot', () => {
-    const combinations = expandCombinations({
-      testRunIds: ['1', '2', '3'],
-      contentMapModes: ['on', 'off'],
-      knowledgeModes: ['learning'],
-    });
+    const combinations = expandCombinations(
+      axes({
+        testRunIds: ['1', '2', '3'],
+        contentMapModes: ['on', 'off'],
+        knowledgeModes: ['learning'],
+      }),
+    );
 
     const slots = assignToSlots(combinations, 4);
     const placed = slots.flat().map((combination) => combination.index);
@@ -236,8 +346,14 @@ describe('runQaMatrix', () => {
       json: true,
       project: '42',
       testRunIds: ['1', '2'],
+      // 축을 주지 않으면 `[null]` 한 칸이다 — 그 축은 서버 기본값으로 한 번만 돈다.
+      models: [null],
+      promptVersions: [null],
+      reasoningEfforts: [null],
       contentMapModes: ['off', 'frozen'],
       knowledgeModes: [null],
+      repeats: 1,
+      resume: false,
       slots: [BUILD_A, BUILD_B],
       width: 1280,
       height: 720,
@@ -291,6 +407,121 @@ describe('runQaMatrix', () => {
     expect(payload.succeeded).toBe(4);
   });
 
+  /**
+   * 한 조합이 몇 분씩 걸린다. 중간에 죽으면 그때까지 끝난 런의 판정도 함께 사라지는 것이 이
+   * 기능이 푸는 문제다.
+   */
+  it('appends each finished run to --out as it finishes', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const out = `${temp.root}/matrix.jsonl`;
+
+    await runQaMatrix(
+      { ...baseOptions(), testRunIds: ['1'], contentMapModes: ['off', 'frozen'], out },
+      createMemorySink(),
+      matrixEnv(),
+      makeStartDeps(),
+    );
+
+    const lines = (await fs.readFile(out, 'utf8')).trimEnd().split('\n');
+    expect(lines).toHaveLength(2);
+    expect(
+      lines.map((line) => (JSON.parse(line) as { contentMapMode: string }).contentMapMode),
+    ).toEqual(expect.arrayContaining(['off', 'frozen']));
+  });
+
+  it('skips the runs already in the journal and launches no game for them', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const out = `${temp.root}/matrix.jsonl`;
+    const options = {
+      ...baseOptions(),
+      testRunIds: ['1'],
+      contentMapModes: ['off', 'frozen'],
+      out,
+    };
+
+    await runQaMatrix(options, createMemorySink(), matrixEnv(), makeStartDeps());
+    await api.close();
+
+    // 두 번째 서버는 launch 를 하나도 받지 않아야 한다.
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const sink = createMemorySink();
+    const code = await runQaMatrix(
+      { ...options, resume: true },
+      sink,
+      matrixEnv(),
+      makeStartDeps(),
+    );
+
+    expect(api.timeline).toEqual([]);
+    expect(code).toBe(EXIT_OK);
+    const payload = sink.lastJson<QaMatrixPayload>();
+    expect(payload.total).toBe(2);
+    expect(payload.succeeded).toBe(2);
+  });
+
+  /** 이어 돌린 것과 처음부터 돈 것의 최종 결과가 같아야 한다. */
+  it('reports the same payload whether it resumed or ran the whole way', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const options = {
+      ...baseOptions(),
+      testRunIds: ['1'],
+      contentMapModes: ['off', 'frozen'],
+    };
+
+    const fresh = createMemorySink();
+    await runQaMatrix(options, fresh, matrixEnv(), makeStartDeps());
+    await api.close();
+
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const out = `${temp.root}/matrix.jsonl`;
+    await runQaMatrix({ ...options, out }, createMemorySink(), matrixEnv(), makeStartDeps());
+    const resumed = createMemorySink();
+    await runQaMatrix({ ...options, out, resume: true }, resumed, matrixEnv(), makeStartDeps());
+
+    const a = fresh.lastJson<QaMatrixPayload>();
+    const b = resumed.lastJson<QaMatrixPayload>();
+    expect(b.combinations.map((c) => [c.index, c.contentMapMode, c.verdict])).toEqual(
+      a.combinations.map((c) => [c.index, c.contentMapMode, c.verdict]),
+    );
+  });
+
+  /** 다른 실험의 파일에 이어 쓰면 한 표에 두 실험이 섞인다. 게임을 띄우기 전에 멈춰야 한다. */
+  it('refuses a journal from a different set of axes before launching anything', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const out = `${temp.root}/matrix.jsonl`;
+
+    await runQaMatrix(
+      { ...baseOptions(), testRunIds: ['1'], contentMapModes: ['frozen'], out },
+      createMemorySink(),
+      matrixEnv(),
+      makeStartDeps(),
+    );
+    await api.close();
+
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+    const failure = (await runQaMatrix(
+      { ...baseOptions(), testRunIds: ['1'], contentMapModes: ['off'], out, resume: true },
+      createMemorySink(),
+      matrixEnv(),
+      makeStartDeps(),
+    ).catch((error: unknown) => error)) as CliError;
+
+    expect(failure.code).toBe('matrix_journal_mismatch');
+    expect(api.timeline).toEqual([]);
+  });
+
+  it('refuses --resume without --out through the CLI', async () => {
+    api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
+
+    const code = await runCli(
+      ['qa', 'matrix', '--project', '42', '--test-run', '1', '--slot', BUILD_A, '--resume'],
+      createMemorySink(),
+      matrixEnv(),
+    );
+
+    expect(code).toBe(EXIT_USAGE);
+  });
+
   it('emits exactly its contracted keys', async () => {
     // `--json` 의 키 집합은 공개 계약이다. 키를 지우거나 이름을 바꾸면 이 테스트가 깨진다.
     api = await startFakeMatrixServer({ sdkToken: 'sdk_token' });
@@ -315,18 +546,24 @@ describe('runQaMatrix', () => {
     ]);
     expect(Object.keys(payload.combinations[0] ?? {}).sort()).toEqual([
       'build',
+      'combination',
       'contentMapMode',
       'durationMs',
       'error',
       'gameInstanceId',
       'index',
       'knowledgeMode',
+      'model',
+      'promptVersion',
       'qaRunId',
+      'reasoningEffort',
+      'repeat',
       'slot',
       'status',
       'stepsPassed',
       'stepsTotal',
       'testRunId',
+      'usage',
       'verdict',
     ]);
   });
