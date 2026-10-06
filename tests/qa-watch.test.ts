@@ -9,6 +9,7 @@ import type { QaFollowEvent } from '../src/qa/follow.js';
 import { createMemorySink, waitUntil, type MemorySink } from './helpers.js';
 import {
   abortedLog,
+  contextLog,
   fakeQaRun,
   fakeQaTry,
   startFakeQaServer,
@@ -35,6 +36,67 @@ function followEvents(sink: MemorySink): QaFollowEvent[] {
     .filter((line) => line.startsWith('{'))
     .map((line) => JSON.parse(line) as QaFollowEvent);
 }
+
+describe('qa watch context usage', () => {
+  async function watchWith(
+    contexts: unknown[],
+    json: boolean,
+  ): Promise<{ sink: MemorySink; events: QaFollowEvent[] }> {
+    api = await startFakeQaServer({
+      run: fakeQaRun({ status: 'RUNNING', tries: [fakeQaTry('4', { status: 'RUNNING' })] }),
+    });
+    const sink = createMemorySink();
+    const watching = runQaWatch('4', { json, timeoutSeconds: 30, ...FAST }, sink, envFor(api));
+    await waitUntil(() => api.streamOpens.length > 0);
+    for (const context of contexts) {
+      api.append(contextLog('4', context));
+    }
+    api.append(
+      terminalLog(
+        '4',
+        'PASSED',
+        { total: 1, passed: 1, failed: 0 },
+        { total: 1, passed: 1, failed: 0 },
+      ),
+    );
+    await watching;
+    return { sink, events: json ? followEvents(sink) : [] };
+  }
+
+  const reading = (used: number): unknown => ({ used_tokens: used, max_tokens: 200_000 });
+
+  it('prints the first reading, then only readings that moved 5 points', async () => {
+    const { events } = await watchWith(
+      [reading(84_000), reading(86_000), reading(93_000), reading(94_000), reading(104_000)],
+      true,
+    );
+    const percents = events.flatMap((event) => (event.kind === 'context' ? [event.percent] : []));
+    expect(percents).toEqual([42, 47, 52]);
+    expect(events.find((event) => event.kind === 'context')).toMatchObject({
+      usedTokens: 84_000,
+      maxTokens: 200_000,
+    });
+  });
+
+  it('ignores malformed context markers', async () => {
+    const { events } = await watchWith(
+      [
+        { used_tokens: 'many', max_tokens: 200_000 },
+        { used_tokens: 10, max_tokens: 0 },
+        { used_tokens: 10 },
+        'nope',
+        null,
+      ],
+      true,
+    );
+    expect(events.some((event) => event.kind === 'context')).toBe(false);
+  });
+
+  it('prints one human-readable line', async () => {
+    const { sink } = await watchWith([reading(84_000)], false);
+    expect(sink.stderr).toContain('  context 84k / 200k (42%)');
+  });
+});
 
 describe('qa watch', () => {
   it('streams every step, then exits 0 on a passing verdict', async () => {

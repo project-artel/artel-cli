@@ -369,6 +369,22 @@ export function stepLog(tryId: string, step: number, passed: boolean, message: s
   };
 }
 
+/** A per-model-call context usage frame. `context` is passed through as given. */
+export function contextLog(tryId: string, context: unknown): FakeQaLog {
+  nextLogId += 1;
+  return {
+    id: String(nextLogId),
+    qaTryId: tryId,
+    messageId: null,
+    correlationId: null,
+    direction: 'AGENT_TO_ORCHE',
+    type: 'LOG',
+    message: 'context',
+    payload: { category: 'SYSTEM', message: 'context', level: 'INFO', context },
+    createdAt: '2026-09-03T05:53:00Z',
+  };
+}
+
 /** 종단 frame. `completedAt` 이 있어야 런의 끝으로 읽힌다. */
 export function terminalLog(
   tryId: string,

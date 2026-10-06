@@ -9,7 +9,13 @@ import {
   type QaRun,
   type QaTry,
 } from '../http/qa.js';
-import { isTerminalFrame, readStepFrame, readTerminalFrame, type QaVerdict } from './verdict.js';
+import {
+  isTerminalFrame,
+  readContextFrame,
+  readStepFrame,
+  readTerminalFrame,
+  type QaVerdict,
+} from './verdict.js';
 
 /**
  * `watch` 가 보고하는 사건. 사람용 한 줄과 `--json` 의 NDJSON 한 줄이 모두 이것 하나에서
@@ -33,6 +39,7 @@ export type QaFollowEvent =
       caseId: string | null;
       message: string | null;
     }
+  | { kind: 'context'; tryId: string; usedTokens: number; maxTokens: number; percent: number }
   | { kind: 'issue'; tryId: string; severity: string; title: string }
   | { kind: 'error'; tryId: string; message: string }
   | { kind: 'try-end'; tryId: string; status: string; verdict: QaVerdict }
@@ -43,6 +50,9 @@ export type QaFollowEvent =
  * 몇 시간짜리 런에서 중간에 한 번 끊긴 것과, 서버가 아예 없어진 것은 다른 일이다.
  */
 export const DEFAULT_RECONNECT_DELAYS_MS: readonly number[] = [500, 1_000, 2_000, 4_000, 8_000];
+
+/** A context reading is reported only when it moved at least this many percentage points. */
+export const CONTEXT_REPORT_STEP_PERCENT = 5;
 
 export const DEFAULT_POLL_INTERVAL_MS = 5_000;
 
@@ -97,6 +107,8 @@ export async function followQaRun(options: FollowQaRunOptions): Promise<QaRun> {
    * 이어받을 frame 이 없어 곧장 닫히고, 그것이 끊긴 연결로 읽혀 재연결을 전부 소모한다.
    */
   const finishedTries = new Set<string>();
+  /** The percent of the last context event printed, per try. */
+  const reportedContext = new Map<string, number>();
   let announcedStatus: string | null = null;
 
   try {
@@ -150,6 +162,7 @@ export async function followQaRun(options: FollowQaRunOptions): Promise<QaRun> {
         pollIntervalMs,
         reconnectDelays,
         cursors,
+        reportedContext,
         qaTry: active,
       });
       if (outcome.finished) {
@@ -169,6 +182,7 @@ interface FollowTryOptions extends FollowQaRunOptions {
   pollIntervalMs: number;
   reconnectDelays: readonly number[];
   cursors: Map<string, string>;
+  reportedContext: Map<string, number>;
   qaTry: QaTry;
 }
 
@@ -349,6 +363,16 @@ function emitLog(options: FollowTryOptions, tryId: string, log: QaLog): void {
       caseId: step.caseId,
       message: step.message,
     });
+    return;
+  }
+
+  const context = readContextFrame(log);
+  if (context !== null) {
+    const last = options.reportedContext.get(tryId);
+    if (last === undefined || Math.abs(context.percent - last) >= CONTEXT_REPORT_STEP_PERCENT) {
+      options.reportedContext.set(tryId, context.percent);
+      options.onEvent({ kind: 'context', tryId, ...context });
+    }
     return;
   }
 
