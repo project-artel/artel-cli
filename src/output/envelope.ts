@@ -76,16 +76,39 @@ export type CommandPayload =
 export interface OutputSink {
   out(line: string): void;
   err(line: string): void;
+  /**
+   * 터미널 맨 아래 한 줄을 제자리에서 바꾼다. `null` 이면 지운다. 줄이 쌓이지 않고
+   * 최신 값 하나만 남아야 하는 진행 표시가 쓴다. 터미널이 아니면 없다 — 그때는 `err` 로 쓴다.
+   */
+  status?(line: string | null): void;
 }
 
-export const processSink: OutputSink = {
-  out(line) {
-    process.stdout.write(`${line}\n`);
-  },
-  err(line) {
-    process.stderr.write(`${line}\n`);
-  },
-};
+const CLEAR_LINE = '\r\u001b[2K';
+
+function createProcessSink(): OutputSink {
+  let live: string | null = null;
+  const sink: OutputSink = {
+    out(line) {
+      process.stdout.write(`${line}\n`);
+    },
+    err(line) {
+      // 일반 줄이 나갈 때 맨 아래 상태 줄을 지웠다가, 그 줄 아래에 다시 그린다.
+      if (live !== null) process.stderr.write(CLEAR_LINE);
+      process.stderr.write(`${line}\n`);
+      if (live !== null) process.stderr.write(live);
+    },
+  };
+  if (process.stderr.isTTY) {
+    sink.status = (line) => {
+      process.stderr.write(CLEAR_LINE);
+      live = line;
+      if (line !== null) process.stderr.write(line);
+    };
+  }
+  return sink;
+}
+
+export const processSink: OutputSink = createProcessSink();
 
 /** 성공 payload 는 stdout 에 한 줄. */
 export function writeJsonPayload(sink: OutputSink, payload: CommandPayload): void {

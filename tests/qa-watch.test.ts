@@ -419,4 +419,39 @@ describe('qa run', () => {
     expect(await running).toBe(EXIT_OK);
     expect(sink.lastJson<QaRunPayload>().verdict).toBe('PASSED');
   });
+
+  it('redraws one status line on a terminal instead of stacking lines', async () => {
+    api = await startFakeQaServer({
+      run: fakeQaRun({ status: 'RUNNING', tries: [fakeQaTry('4', { status: 'RUNNING' })] }),
+    });
+    const memory = createMemorySink();
+    const statuses: (string | null)[] = [];
+    const sink = { ...memory, status: (line: string | null) => void statuses.push(line) };
+    const watching = runQaWatch('4', { json: false, timeoutSeconds: 30, ...FAST }, sink, envFor(api));
+    await waitUntil(() => api.streamOpens.length > 0);
+    for (const used of [84_000, 86_000, 88_000]) {
+      api.append(contextLog('4', { used_tokens: used, max_tokens: 200_000 }));
+    }
+    api.append(
+      terminalLog(
+        '4',
+        'PASSED',
+        { total: 1, passed: 1, failed: 0 },
+        { total: 1, passed: 1, failed: 0 },
+      ),
+    );
+    await watching;
+
+    // Every reading redraws the line, the throttle does not apply, and the line is cleared at the end.
+    expect(statuses).toEqual([
+      'context 84k / 200k (42%)',
+      'context 86k / 200k (43%)',
+      'context 88k / 200k (44%)',
+      null,
+    ]);
+    // Only the last reading stays in the scrollback.
+    expect(memory.stderr.filter((line) => line.includes('context '))).toEqual([
+      '  context 88k / 200k (44%)',
+    ]);
+  });
 });

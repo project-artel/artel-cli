@@ -61,6 +61,8 @@ export interface FollowQaRunOptions {
   cliToken: string;
   qaRunId: string;
   onEvent: (event: QaFollowEvent) => void;
+  /** Context readings closer than this many percentage points to the last one are dropped. 0 reports every reading. */
+  contextStepPercent?: number | undefined;
   fetchImpl?: FetchLike | undefined;
   /** 0 이면 제한 없음. */
   timeoutMs: number;
@@ -369,7 +371,7 @@ function emitLog(options: FollowTryOptions, tryId: string, log: QaLog): void {
   const context = readContextFrame(log);
   if (context !== null) {
     const last = options.reportedContext.get(tryId);
-    if (last === undefined || Math.abs(context.percent - last) >= CONTEXT_REPORT_STEP_PERCENT) {
+    if (last === undefined || Math.abs(context.percent - last) >= (options.contextStepPercent ?? CONTEXT_REPORT_STEP_PERCENT)) {
       options.reportedContext.set(tryId, context.percent);
       options.onEvent({ kind: 'context', tryId, ...context });
     }
