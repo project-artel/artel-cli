@@ -217,3 +217,40 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   }
   return value as Record<string, unknown>;
 }
+
+/** LLM context window usage reported by the agent on every model call. */
+export interface QaContextFrame {
+  usedTokens: number;
+  maxTokens: number;
+  /** Rounded to a whole number. */
+  percent: number;
+}
+
+/**
+ * Reads the `context` marker of a `LOG` frame. Other `LOG` frames lack it, and a frame whose
+ * marker is malformed (non-numeric, negative used tokens, `max_tokens <= 0`) is ignored rather
+ * than reported as a context reading.
+ */
+export function readContextFrame(log: QaLog): QaContextFrame | null {
+  if (log.type !== 'LOG') {
+    return null;
+  }
+  const payload = asRecord(log.payload);
+  const context = payload === null ? null : asRecord(payload['context']);
+  if (context === null) {
+    return null;
+  }
+  const used = context['used_tokens'];
+  const max = context['max_tokens'];
+  if (
+    typeof used !== 'number' ||
+    typeof max !== 'number' ||
+    !Number.isFinite(used) ||
+    !Number.isFinite(max) ||
+    used < 0 ||
+    max <= 0
+  ) {
+    return null;
+  }
+  return { usedTokens: used, maxTokens: max, percent: Math.round((used / max) * 100) };
+}

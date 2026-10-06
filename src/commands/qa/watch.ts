@@ -15,6 +15,8 @@ export interface QaWatchCommandOptions {
   /** 테스트가 폴링과 재연결을 빠르게 돌리는 자리. 평소에는 기본값을 쓴다. */
   pollIntervalMs?: number | undefined;
   reconnectDelaysMs?: readonly number[] | undefined;
+  /** 이 폭보다 덜 움직인 context 값은 건너뛴다. 0 이면 값마다 알린다. 비우면 follow 의 기본값. */
+  contextStepPercent?: number | undefined;
 }
 
 /** 이미 도는 런에 붙어 끝까지 본다. exit code 규칙은 `qa run` 과 같다. */
@@ -44,11 +46,27 @@ export async function watchToEnd(
 ): Promise<number> {
   // 진행 상황은 stderr 로 간다. `--json` 이면 그 자리에 사건 한 줄씩 NDJSON 이 실리고,
   // stdout 에는 끝난 뒤의 payload 한 줄만 남는다 — 다른 명령들과 같은 규칙이다.
+  //
+  // context 사용량은 사람용 출력이 터미널일 때 줄을 쌓지 않고 맨 아래 한 줄을 제자리에서
+  // 바꾼다. 줄로 쌓으면 스크롤에 묻혀 지금 얼마나 찼는지 찾아 읽어야 한다.
+  const live = !options.json && sink.status !== undefined;
+  let lastContext: string | null = null;
   const onEvent = (event: QaFollowEvent): void => {
+    if (live && event.kind === 'context') {
+      lastContext = describeFollowEvent(event);
+      sink.status?.(lastContext.trim());
+      return;
+    }
     sink.err(options.json ? JSON.stringify(event) : describeFollowEvent(event));
   };
 
-  const payload = await followToPayload(context, qaRunId, options, onEvent, fetchImpl);
+  const followOptions = live ? { ...options, contextStepPercent: 0 } : options;
+  const payload = await followToPayload(context, qaRunId, followOptions, onEvent, fetchImpl);
+  if (live) {
+    // 끝난 뒤에는 마지막 값을 일반 줄로 남겨 스크롤에서 읽히게 한다.
+    sink.status?.(null);
+    if (lastContext !== null) sink.err(lastContext);
+  }
   reportQaRun(sink, options.json, payload);
   return payload.verdict === 'PASSED' ? EXIT_OK : EXIT_FAILURE;
 }
@@ -76,6 +94,7 @@ export async function followToPayload(
     timeoutMs: options.timeoutSeconds * 1_000,
     pollIntervalMs: options.pollIntervalMs,
     reconnectDelaysMs: options.reconnectDelaysMs,
+    contextStepPercent: options.contextStepPercent,
   });
 
   return await buildQaRunPayload(context.apiBaseUrl, context.cliToken, finished, fetchImpl);

@@ -160,6 +160,10 @@ function describeCounts(counts: QaCountsPayload): string {
 }
 
 /** `watch` 한 줄. 사람용 출력과 `--json` 의 NDJSON 이 같은 사건에서 나온다. */
+function describeTokens(tokens: number): string {
+  return tokens >= 1_000 ? `${String(Math.round(tokens / 1_000))}k` : String(tokens);
+}
+
 export function describeFollowEvent(event: QaFollowEvent): string {
   switch (event.kind) {
     case 'run-status':
@@ -170,6 +174,8 @@ export function describeFollowEvent(event: QaFollowEvent): string {
       return `  step ${String(event.step)}  ${event.passed ? 'pass' : 'FAIL'}${
         event.caseId === null ? '' : `  case ${event.caseId}`
       }${event.message === null ? '' : `  ${event.message}`}`;
+    case 'context':
+      return `  context ${describeTokens(event.usedTokens)} / ${describeTokens(event.maxTokens)} (${String(event.percent)}%)`;
     case 'issue':
       return `  issue  ${event.severity}  ${event.title}`;
     case 'error':
