@@ -1,8 +1,12 @@
 import type {
   CaseCreateBatchPayload,
   CaseDeletePayload,
+  CaseFolderDeletePayload,
+  CaseFolderListPayload,
   CaseListPayload,
+  CaseMovePayload,
   TestCaseDetailPayload,
+  TestCaseFolderPayload,
   TestCasePayload,
 } from '../../output/contract.js';
 import { writeJsonPayload, type OutputSink } from '../../output/envelope.js';
@@ -80,6 +84,7 @@ function printTestCaseFields(sink: OutputSink, payload: TestCasePayload): void {
   field(sink, 'status', payload.status ?? '-');
   field(sink, 'verification status', payload.verificationStatus);
   field(sink, 'last verified build', payload.lastVerifiedBuildId ?? '-');
+  field(sink, 'folder', payload.folderId ?? '-');
   field(sink, 'created at', payload.createdAt);
 }
 
@@ -124,4 +129,84 @@ export function reportCaseDeleted(
     return;
   }
   sink.out(`Deleted test case ${payload.id} from project ${payload.projectId}.`);
+}
+
+/**
+ * folder 를 tree 로 그린다. 부모가 목록에 없는 folder 는 최상위에 놓는다. 서버가 그런 행을 줄
+ * 일은 없지만, 빠뜨리고 그리면 있는 folder 가 출력에서 사라진다.
+ */
+export function reportCaseFolderList(
+  sink: OutputSink,
+  json: boolean,
+  projectId: string,
+  payload: CaseFolderListPayload,
+): void {
+  if (json) {
+    writeJsonPayload(sink, payload);
+    return;
+  }
+  sink.out(`${String(payload.items.length)} folder(s) in project ${projectId}.`);
+  const ids = new Set(payload.items.map((item) => item.id));
+  const children = new Map<string | null, TestCaseFolderPayload[]>();
+  for (const item of payload.items) {
+    const parent = item.parentId !== null && ids.has(item.parentId) ? item.parentId : null;
+    children.set(parent, [...(children.get(parent) ?? []), item]);
+  }
+  const printBranch = (parentId: string | null, depth: number): void => {
+    for (const item of children.get(parentId) ?? []) {
+      sink.out(`  ${item.id.padStart(6)}  ${'  '.repeat(depth)}${item.name}${folderOrigin(item)}`);
+      printBranch(item.id, depth + 1);
+    }
+  };
+  printBranch(null, 0);
+}
+
+function folderOrigin(folder: TestCaseFolderPayload): string {
+  return folder.gameBuildId === null ? '' : `  (content map of build ${folder.gameBuildId})`;
+}
+
+export function reportTestCaseFolder(
+  sink: OutputSink,
+  json: boolean,
+  projectId: string,
+  payload: TestCaseFolderPayload,
+  verb: string,
+): void {
+  if (json) {
+    writeJsonPayload(sink, payload);
+    return;
+  }
+  sink.out(`${verb} folder ${payload.id} in project ${projectId}.`);
+  field(sink, 'name', payload.name);
+  field(sink, 'parent', payload.parentId ?? '- (top level)');
+  field(sink, 'content map build', payload.gameBuildId ?? '-');
+}
+
+export function reportCaseFolderDeleted(
+  sink: OutputSink,
+  json: boolean,
+  payload: CaseFolderDeletePayload,
+): void {
+  if (json) {
+    writeJsonPayload(sink, payload);
+    return;
+  }
+  sink.out(`Deleted folder ${payload.id} from project ${payload.projectId}.`);
+  sink.out('  Its subfolders were deleted with it; the test cases inside now have no folder.');
+}
+
+export function reportCaseMove(sink: OutputSink, json: boolean, payload: CaseMovePayload): void {
+  if (json) {
+    writeJsonPayload(sink, payload);
+    return;
+  }
+  const target = payload.folderId === null ? 'no folder' : `folder ${payload.folderId}`;
+  sink.out(
+    `Moved ${String(payload.moved)}/${String(payload.requested)} test case(s) to ${target} in project ${payload.projectId}.`,
+  );
+  if (payload.moved < payload.requested) {
+    sink.out(
+      `  ${String(payload.requested - payload.moved)} id(s) were skipped: they do not exist in this project.`,
+    );
+  }
 }

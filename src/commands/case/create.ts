@@ -5,7 +5,7 @@ import { toCreateRequest } from '../../case/requests.js';
 import { CliError } from '../../errors.js';
 import { EXIT_FAILURE, EXIT_OK } from '../../exit.js';
 import type { FetchLike } from '../../http/client.js';
-import { createTestCase } from '../../http/testcase.js';
+import { createTestCase, type TestCaseCreateRequest } from '../../http/testcase.js';
 import type { CaseCreateBatchPayload, CaseCreateResultPayload } from '../../output/contract.js';
 import type { OutputSink } from '../../output/envelope.js';
 import { reportCaseCreateBatch, reportTestCase } from './output.js';
@@ -15,6 +15,8 @@ export interface CaseCreateCommandOptions {
   project: string;
   /** `--file`. 없으면 표준입력을 읽는다. */
   file?: string | undefined;
+  /** `--folder`. body 항목에 `folderId` 가 없을 때만 채운다. 항목에 적은 값이 우선이다. */
+  folder?: string | undefined;
   apiUrl?: string | undefined;
 }
 
@@ -42,7 +44,7 @@ export async function runCaseCreate(
     return await createMany(context, options, body, sink, fetchImpl);
   }
 
-  const request = toCreateRequest(body, 'body');
+  const request = withDefaultFolder(toCreateRequest(body, 'body'), options.folder);
   const created = await createTestCase(
     context.apiBaseUrl,
     context.cliToken,
@@ -52,6 +54,15 @@ export async function runCaseCreate(
   );
   reportTestCase(sink, options.json, toTestCasePayload(created), 'Created');
   return EXIT_OK;
+}
+
+function withDefaultFolder(
+  request: TestCaseCreateRequest,
+  folder: string | undefined,
+): TestCaseCreateRequest {
+  return request.folderId === undefined && folder !== undefined
+    ? { ...request, folderId: folder }
+    : request;
 }
 
 async function createMany(
@@ -71,7 +82,10 @@ async function createMany(
   const results: CaseCreateResultPayload[] = [];
   for (const [index, item] of items.entries()) {
     try {
-      const request = toCreateRequest(item, `items[${String(index)}]`);
+      const request = withDefaultFolder(
+        toCreateRequest(item, `items[${String(index)}]`),
+        options.folder,
+      );
       const created = await createTestCase(
         context.apiBaseUrl,
         context.cliToken,

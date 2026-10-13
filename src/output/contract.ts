@@ -354,6 +354,8 @@ export interface TestCasePayload {
   status: string | null;
   verificationStatus: string;
   lastVerifiedBuildId: string | null;
+  /** 이 케이스가 든 folder. `null` 이면 folder 없음이다. */
+  folderId: string | null;
   createdAt: string;
 }
 
@@ -556,6 +558,41 @@ export interface CaseDeletePayload {
   id: string;
   projectId: string;
   deleted: true;
+}
+
+/** `TestCaseFolderResponse` 와 같은 필드. `case folder create`·`case folder update` 가 이 모양을 낸다. */
+export interface TestCaseFolderPayload {
+  id: string;
+  /** `null` 이면 최상위 folder 다. */
+  parentId: string | null;
+  name: string;
+  /** content map 에서 test case 를 만들 때 생긴 folder 면 그 content map. 아니면 `null`. */
+  contentMapId: string | null;
+  gameBuildId: string | null;
+}
+
+/** `case folder list --json`. `TestCaseFolderListResponse` 와 같은 모양이고, 순서는 서버가 준 그대로다. */
+export interface CaseFolderListPayload {
+  items: TestCaseFolderPayload[];
+}
+
+/** `case folder delete --json`. 서버는 204 로 답하므로 지운 사실은 CLI 가 이 모양으로 만든다. */
+export interface CaseFolderDeletePayload {
+  id: string;
+  projectId: string;
+  deleted: true;
+}
+
+/**
+ * `case move --json`. `moved` 는 서버가 실제로 옮긴 수다. 없는 id 와 다른 프로젝트의 id 는
+ * 서버가 오류 없이 건너뛰므로, `requested` 와 다르면 그 차이만큼이 그런 id 다.
+ */
+export interface CaseMovePayload {
+  projectId: string;
+  /** `null` 이면 folder 없음으로 옮긴 것이다. */
+  folderId: string | null;
+  requested: number;
+  moved: number;
 }
 
 /**

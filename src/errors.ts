@@ -43,6 +43,8 @@ export const ERROR_CODES = [
   'case_not_found',
   'case_invalid_request',
   'case_invalid_body',
+  'case_folder_not_found',
+  'case_folder_conflict',
   'scenario_not_found',
   'scenario_project_not_found',
   'scenario_has_qa_history',

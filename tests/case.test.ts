@@ -25,6 +25,7 @@ import { fakeTestCase, startFakeCaseServer, type FakeCaseServer } from './case-h
 const TEST_CASE_KEYS = [
   'createdAt',
   'expectedValue',
+  'folderId',
   'id',
   'lastVerifiedBuildId',
   'precondition',
