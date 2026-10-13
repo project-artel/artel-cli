@@ -40,6 +40,11 @@ jobs:
           node-version: '22.14.0'
           registry-url: 'https://registry.npmjs.org'
 
+      # Node 22.14.0 에 들어 있는 npm 은 10.9.2 다. trusted publishing 의 OIDC 교환은 npm 11.5.1
+      # 부터 있어서, 10.9.2 는 인증 없이 PUT 을 보내고 `E404 Not Found` 로 실패한다
+      # (2026-10-13, v0.0.1-alpha.1 첫 tag 배포에서 확인).
+      - run: npm install -g npm@11.6.0
+
       - run: npm ci
 
       - name: 태그와 package.json 의 버전이 같은지 본다
