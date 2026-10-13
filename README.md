@@ -22,6 +22,14 @@ To run it without a global install, as in CI, use `npx`:
 npx @project-artel/cli@alpha <command>
 ```
 
+To let an AI coding agent such as Claude Code, Codex or Cursor install it, give
+the agent this prompt. [`https://artel.kr/cli.md`](https://artel.kr/cli.md)
+holds step-by-step instructions written for the agent.
+
+```
+Install the ARTEL CLI on this machine by following https://artel.kr/cli.md
+```
+
 ## Commands
 
 ```
