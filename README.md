@@ -45,6 +45,28 @@ as often a program or a coding agent as it is a person. That JSON shape is a
 contract: a key never disappears, and an unknown value is `null` rather than an
 absent field.
 
+## Installing
+
+The CLI is published on npm as `@project-artel/cli`, and the command it installs
+is `artel`. It needs Node.js 22.12.0 or newer.
+
+```
+npm install -g @project-artel/cli@alpha
+artel --version
+```
+
+Keep the `@alpha` tag. Releases go out under the `alpha` dist-tag, and `latest`
+still points at the older `0.0.1-alpha.0`, so a bare
+`npm install -g @project-artel/cli` installs an outdated build.
+
+To run it without a global install, which suits CI, use `npx`:
+
+```
+npx @project-artel/cli@alpha <command>
+```
+
+Next, run `artel auth login`; see [Authenticating](#authenticating).
+
 ## Authenticating
 
 There are two ways to give the CLI a credential, and the first one wins.
