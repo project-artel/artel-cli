@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runAuthStatus } from '../src/commands/auth/status.js';
+import { DEFAULT_API_BASE_URL } from '../src/config.js';
 import { writeCredential } from '../src/credentials/store.js';
 import { CREDENTIAL_FILE_VERSION } from '../src/credentials/types.js';
 import type { CliError } from '../src/errors.js';
@@ -69,12 +70,12 @@ describe('a signed-in machine needs no address flag', () => {
   it('does not lend the stored address to an ARTEL_TOKEN credential', async () => {
     await signIn();
 
-    const failure = (await resolveQaContext(
+    const context = await resolveQaContext(
       { ARTEL_CONFIG_DIR: temp.configDir, ARTEL_TOKEN: 'artel_from_env' },
       undefined,
-    ).catch((error: unknown) => error)) as CliError;
+    );
 
-    expect(failure.code).toBe('missing_api_base_url');
+    expect(context.apiBaseUrl).toBe(DEFAULT_API_BASE_URL);
   });
 
   /**
@@ -117,14 +118,14 @@ describe('artel auth status reports the address commands would use', () => {
     expect(payload.apiBaseUrlSource).toBe('env');
   });
 
-  it('reports no address at all rather than failing', async () => {
+  it('reports the built-in default when nothing supplies an address', async () => {
     const sink = createMemorySink();
 
     await runAuthStatus({ json: true }, sink, { ARTEL_CONFIG_DIR: temp.configDir });
 
     const payload = sink.lastJson<StatusPayload>();
-    expect(payload.apiBaseUrl).toBeNull();
-    expect(payload.apiBaseUrlSource).toBeNull();
+    expect(payload.apiBaseUrl).toBe(DEFAULT_API_BASE_URL);
+    expect(payload.apiBaseUrlSource).toBe('default');
   });
 
   it('writes the source into the human output too', async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_API_BASE_URL,
   effectiveApiBaseUrl,
   resolveApiBaseUrl,
   resolveConfig,
@@ -58,20 +59,11 @@ describe('resolveApiBaseUrl', () => {
   });
 
   /**
-   * `ARTEL_TOKEN` 으로 인증한 쪽이 `null` 을 넘긴다. 그 경로가 실제로 주소 없이 끝나는지
-   * 본다 — 빈 문자열이나 공백만 든 값을 값으로 읽으면 CI 가 엉뚱한 곳에 붙는다.
+   * `ARTEL_TOKEN` 으로 인증한 쪽이 `null` 을 넘긴다. 빈 문자열이나 공백만 든 값을 값으로
+   * 읽지 않고 기본값으로 넘어가는지 본다.
    */
   it('treats a blank stored address as absent', () => {
-    const failure = (() => {
-      try {
-        resolveApiBaseUrl({}, undefined, '   ');
-        return null;
-      } catch (error) {
-        return error as CliError;
-      }
-    })();
-
-    expect(failure?.code).toBe('missing_api_base_url');
+    expect(resolveApiBaseUrl({}, undefined, '   ')).toBe(DEFAULT_API_BASE_URL);
   });
 
   it('names the credentials file when the stored address is malformed', () => {
@@ -88,32 +80,8 @@ describe('resolveApiBaseUrl', () => {
     expect(failure?.message).toContain('credentials file');
   });
 
-  it('still refuses when neither --api-url nor the environment variable is set', () => {
-    const failure = (() => {
-      try {
-        resolveApiBaseUrl({});
-        return null;
-      } catch (error) {
-        return error as CliError;
-      }
-    })();
-
-    expect(failure?.code).toBe('missing_api_base_url');
-    expect(failure?.message).toContain('--api-url');
-    expect(failure?.message).toContain('ARTEL_API_BASE_URL');
-  });
-
-  it('points at "artel auth login" when nothing supplies an address', () => {
-    const failure = (() => {
-      try {
-        resolveApiBaseUrl({});
-        return null;
-      } catch (error) {
-        return error as CliError;
-      }
-    })();
-
-    expect(failure?.message).toContain('artel auth login');
+  it('falls back to the stage API when nothing supplies an address', () => {
+    expect(resolveApiBaseUrl({})).toBe('https://stage-orch.artel.kr');
   });
 
   it('rejects a malformed --api-url instead of failing later as a network error', () => {
@@ -192,6 +160,30 @@ describe('resolveConsoleBaseUrl', () => {
     })();
 
     expect(failure?.code).toBe('missing_console_base_url');
+  });
+
+  it('pairs the stage API with the stage console', () => {
+    expect(resolveConsoleBaseUrl({}, 'https://stage-orch.artel.kr')).toBe(
+      'https://home.stage.artel.kr',
+    );
+  });
+
+  it('uses the console paired with the default API when no API is given', () => {
+    expect(resolveConsoleBaseUrl({})).toBe('https://home.stage.artel.kr');
+  });
+
+  it('refuses an API that has no known console instead of guessing one', () => {
+    const failure = (() => {
+      try {
+        resolveConsoleBaseUrl({}, 'https://api.example.test');
+        return null;
+      } catch (error) {
+        return error as CliError;
+      }
+    })();
+
+    expect(failure?.code).toBe('missing_console_base_url');
+    expect(failure?.message).toContain('--console-url');
   });
 
   it('accepts the loopback API when --console-url pairs it explicitly', () => {
@@ -277,7 +269,10 @@ describe('effectiveApiBaseUrl', () => {
     });
   });
 
-  it('has no source when nothing supplies an address', () => {
-    expect(effectiveApiBaseUrl({}, null)).toEqual({ value: null, source: null });
+  it('names the default as the source when nothing supplies an address', () => {
+    expect(effectiveApiBaseUrl({}, null)).toEqual({
+      value: DEFAULT_API_BASE_URL,
+      source: 'default',
+    });
   });
 });

@@ -356,14 +356,16 @@ describe('exit codes and reported values', () => {
     expect(sink.stdout.join('\n')).toContain('login');
   });
 
-  it('refuses to log in without ARTEL_API_BASE_URL', async () => {
+  it('refuses to pair an unknown API with a guessed console', async () => {
     const sink = createMemorySink();
-    const code = await runCli(['auth', 'login', '--json'], sink, {
-      ARTEL_CONFIG_DIR: temp.configDir,
-    });
+    const code = await runCli(
+      ['auth', 'login', '--api-url', 'https://api.example.test', '--json'],
+      sink,
+      { ARTEL_CONFIG_DIR: temp.configDir },
+    );
 
     expect(code).toBe(EXIT_FAILURE);
-    expect(sink.lastJson<ErrorEnvelope>().error.code).toBe('missing_api_base_url');
+    expect(sink.lastJson<ErrorEnvelope>().error.code).toBe('missing_console_base_url');
   });
 
   it('still fires the loopback pairing rule when --api-url supplies a loopback host', async () => {

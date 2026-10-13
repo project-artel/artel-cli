@@ -83,11 +83,12 @@ export function printStatus(sink: OutputSink, payload: StatusPayload): void {
  * 설명되지 않는다. `--api-url` 은 `auth status` 에 없으므로 `flag` 는 여기 나오지 않는다.
  */
 function describeApiBaseUrl(payload: StatusPayload): string {
-  if (payload.apiBaseUrl === null) {
-    return '  api base url      not set (pass --api-url, set ARTEL_API_BASE_URL, or sign in)';
-  }
   const origin =
-    payload.apiBaseUrlSource === 'env' ? 'ARTEL_API_BASE_URL' : 'credentials file';
+    payload.apiBaseUrlSource === 'env'
+      ? 'ARTEL_API_BASE_URL'
+      : payload.apiBaseUrlSource === 'default'
+        ? 'built-in default'
+        : 'credentials file';
   return `  api base url      ${payload.apiBaseUrl} (from ${origin})`;
 }
 
