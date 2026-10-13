@@ -1,20 +1,28 @@
 # artel
 
-The command line interface for the ARTEL platform.
+The command line interface for the ARTEL platform. It runs a QA agent against a
+game from a terminal or from CI, without opening the console in a browser.
 
-> Early work, but the server side every command needs is in place. The two
-> endpoints this README used to call missing — `POST /api/auth/cli-tokens/exchange`
-> behind `artel auth login`, and `POST /api/auth/sdk-tokens` behind
-> `artel game start` — both exist in the orchestration server. Against a
-> deployment older than either, the command still fails saying exactly which
-> endpoint that server does not have, so pointing at an old host is not a
-> mystery. `ARTEL_TOKEN` remains the credential path CI should use: it needs no
-> browser.
+## Installing
 
-## What it is for
+The CLI is published on npm as `@project-artel/cli`, and the command it installs
+is `artel`. It needs Node.js 22.12.0 or newer.
 
-Running a QA agent against a game, from a terminal or from CI, without opening
-the console in a browser.
+```
+npm install -g @project-artel/cli@alpha
+artel --version
+```
+
+Keep the `@alpha` tag. Releases go out under the `alpha` dist-tag, and `latest`
+still points at the older `0.0.1-alpha.0`.
+
+To run it without a global install, as in CI, use `npx`:
+
+```
+npx @project-artel/cli@alpha <command>
+```
+
+## Commands
 
 ```
 artel auth login                                        # this machine's credential
@@ -37,178 +45,99 @@ artel map show --project <id> --build <id>              # what the agent could r
 artel game logout --build ./Build/Game.exe --project <id>
 ```
 
-`artel <group> --help` lists the rest of each group. Every group is real today;
-this README does not describe commands that do not exist.
-
-Every command that reports a result also takes `--json`, because the reader is
-as often a program or a coding agent as it is a person. That JSON shape is a
-contract: a key never disappears, and an unknown value is `null` rather than an
-absent field.
-
-## Installing
-
-The CLI is published on npm as `@project-artel/cli`, and the command it installs
-is `artel`. It needs Node.js 22.12.0 or newer.
-
-```
-npm install -g @project-artel/cli@alpha
-artel --version
-```
-
-Keep the `@alpha` tag. Releases go out under the `alpha` dist-tag, and `latest`
-still points at the older `0.0.1-alpha.0`, so a bare
-`npm install -g @project-artel/cli` installs an outdated build.
-
-To run it without a global install, which suits CI, use `npx`:
-
-```
-npx @project-artel/cli@alpha <command>
-```
-
-Next, run `artel auth login`; see [Authenticating](#authenticating).
+`artel <group> --help` lists the rest of each group. Every command that reports
+a result also takes `--json`. In that output a key never disappears, and an
+unknown value is `null`.
 
 ## Authenticating
 
-There are two ways to give the CLI a credential, and the first one wins.
+The CLI takes a credential from one of two places, and the first one wins.
 
-**`ARTEL_TOKEN`.** Set it to a CLI token and every command uses it. This is the
-path for CI, and it needs no file and no browser. A variable that is set but
-empty or blank counts as unset — a job whose secret did not resolve reads as
-"not signed in" rather than dying on every command — and `artel auth status`
-reports that as `"envVarState": "empty"` so it is not silent.
+**`ARTEL_TOKEN`.** Set it to a CLI token issued in the console's account
+settings. Use this in CI: it needs no file and no browser. An empty value counts
+as unset.
 
-**`artel auth login`.** It opens the console in a browser, waits on a
-`127.0.0.1` callback, and stores the issued token at
-`~/.artel/credentials.json` with mode `0600`. Set `ARTEL_CONFIG_DIR` to keep
-that file somewhere else. On Windows the file goes to
-`%USERPROFILE%\.artel\credentials.json` and leans on the profile ACL, because
-NTFS does not enforce POSIX mode bits.
+**`artel auth login`.** It opens the console in a browser and stores the issued
+token at `~/.artel/credentials.json` (`%USERPROFILE%\.artel\credentials.json` on
+Windows). Set `ARTEL_CONFIG_DIR` to keep that file somewhere else.
 
-With no flags, the CLI talks to the stage deployment: the API at
-`https://stage-orch.artel.kr` and the console at `https://home.stage.artel.kr`,
-the same pair the SDK uses by default. Two environment variables point it
-elsewhere: `ARTEL_API_BASE_URL` (or `--api-url`) and `ARTEL_CONSOLE_BASE_URL`
-(or `--console-url`). The address `artel auth login` used is stored with the
-credential and becomes the default for later commands. The console must be the
-one that talks to the API — a login code issued by one deployment cannot be
-consumed by another — so an API with no known console, such as
-`http://localhost:8080`, needs `--console-url` too.
+By default the CLI talks to the stage deployment: the API at
+`https://stage-orch.artel.kr` and the console at `https://home.stage.artel.kr`.
+Point it elsewhere with `ARTEL_API_BASE_URL` (or `--api-url`) and
+`ARTEL_CONSOLE_BASE_URL` (or `--console-url`). The addresses `artel auth login`
+used are stored with the credential and become the default for later commands.
+An API with no known console, such as `http://localhost:8080`, needs
+`--console-url` too.
 
-`artel auth status` says which credential would be used and where it came from.
-It never prints the token; it prints a `fingerprint`, the first 12 hex of
-`sha256(token)`, which is enough to tell two machines apart. Reporting "not
-signed in" is a successful report, so it exits `0`.
+`artel auth status` says which credential is in use and where it came from. It
+prints a fingerprint, never the token.
 
-`artel auth logout` deletes the local file and says so. It does **not** revoke
-anything on the server — `--json` carries `"serverSideRevoked": false` to say
-that in a form a program can read. Revoke a token in the console.
+`artel auth logout` deletes the local file. It does not revoke the token on the
+server; revoke it in the console.
 
-## Finding the ids other commands ask for
+## Finding project and instance ids
 
-Almost every command takes `--project`, and `artel qa run` takes `--instance`.
-Two commands say what those are, so neither one has to come from a browser.
+**`artel project list`** lists the projects this credential can see. The output
+is paged; it says which `--page` holds the rest.
 
-**`artel project list`** names the projects this credential can see, newest
-change first. The server pages this, so the output says how many of the total
-came back and which `--page` holds the rest — a list that quietly stopped at 100
-would read as "there are only 100".
-
-**`artel game list --project <id>`** names that project's game instances. It
-prints whether each one is connected right now, because that is what decides
-whether `artel qa run` can drive it; an instance that has gone offline shows when
-it was last reachable. An instance exists only after a build carrying the SDK has
-registered at least once, so an empty list usually means `artel game start` has
-not run yet rather than that something is wrong.
-
-Both are reads: an empty result is a successful report and exits `0`.
+**`artel game list --project <id>`** lists that project's game instances and
+whether each one is connected now. An instance appears only after a build with
+the SDK has registered once, so an empty list usually means `artel game start`
+has not run yet.
 
 ## Launching a game
 
-**`artel game start --build <path> --project <id>`.** It signs the build in
-without the user ever handling an SDK token: this command exchanges the CLI
-credential for one, and passes it to the build only through the child
-process's `ARTEL_SDK_TOKEN` environment variable — never on the command line,
-which is readable by every other user on the machine through `ps`. Everything
-else goes as launch arguments: `-artel-server <host:port>` and
-`-artel-secure <true|false>` (both derived from `ARTEL_API_BASE_URL`),
-`-artel-frontend <url>` (`ARTEL_CONSOLE_BASE_URL`), `-artel-project <id>`, and
-`-logFile <path>` pointing at a fresh file under `~/.artel/logs` so a failure
-can name exactly where to look. `--width`/`--height` set the window size
-(`-screen-width`/`-screen-height`); the launch never carries `-batchmode` (see
-below).
+**`artel game start --build <path> --project <id>`** launches the build already
+signed in, waits until it registers with the server, prints the game instance
+id and exits. The game keeps running. The id is what `artel qa run --instance`
+takes.
 
-**The game launches windowed.** Unity reads the full-screen mode it saved last
-time unless the launch says otherwise, so without `-screen-fullscreen` a build
-comes up full screen and `--width`/`--height` look ignored. This CLI passes
-`-screen-fullscreen 0` by default, and `--fullscreen` passes `1`. The default is
-windowed because running several builds at once is what this tool is for, and
-two full-screen games cover each other.
+- The game launches windowed. `--width` and `--height` set the window size, and
+  `--fullscreen` launches it full screen.
+- The game log goes to a new file under `~/.artel/logs`.
+- If the build does not register within `--timeout` seconds (default 60), or
+  exits first, the error says which and names the log file.
 
-The command waits until the build registers with the server, then prints the
-resulting game instance id and exits — the build itself keeps running. That id
-is what `artel qa run --instance` takes to address this run, and
-`artel game list` finds it again later. If
-registration does not happen within `--timeout` seconds (default 60), or the
-build exits first, the error says which and names the log file.
-
-**`artel game logout --build <path> --project <id>`.** The session lives in
-the game's own platform secret store, not in a file this CLI controls, so only
-the game process itself can clear it. This command launches the build with the
-same arguments plus `-artel-logout`, waits for it to exit on its own, and
-reports the exit code — killing it if it does not exit within `--timeout`
-seconds (default 30).
+**`artel game logout --build <path> --project <id>`** launches the build once to
+clear its stored session, and waits for it to exit (`--timeout`, default 30).
 
 ## Running QA
 
-**`artel qa run --test-run <id> --instance <id>`** starts a QA run and, unless
-you pass `--no-wait`, follows it until the agent reaches a verdict. Four flags
-pin the axes that make two runs comparable: `--model`, `--prompt-version`,
-`--reasoning-effort` and `--arch` (a JSON object, or `@path` naming a file that
-holds one). They are the same four axes `artel qa diff` selects on, so a run you
-just watched can be compared straight away. Leave one out and the server picks;
-what it picked comes back in the result either way.
+**`artel qa run --test-run <id> --instance <id>`** starts a QA run and follows
+it until the agent reaches a verdict. `--no-wait` returns right after starting.
 
-Three more flags open what the agent is allowed to use, rather than how it
-thinks. `--content-map-mode` takes `on`, `frozen` or `off`; `--knowledge-mode`
-takes `learning`, `frozen` or `off`. They are separate switches on purpose — tied
-together, there is no way to tell whether the knowledge store or the content map
-was what helped. `--label` names the experiment a run belongs to. **Name the
-experiment only.** Which arm it is is already in `run_config`, so writing
-`arm:map-only` in the label records the same fact in two places and the two
-drift. A flag you leave out is left out of the request entirely, so the server
-uses its own default; the CLI never sends an empty string, which the server would
-read as a value and reject.
+These flags set the run's configuration. A flag you leave out is chosen by the
+server, and the result shows what it chose.
 
-**The exit code is the verdict.** `0` only when the run passed. Failed, cancelled
-and *unknown* are all `1`. Unknown is the case worth stating: a run whose socket
-died never sends a summary, so it has no verdict at all — not a verdict of zero.
-Calling that `0` would let a run that never really finished go green in CI. The
-same rule runs `artel qa watch`, which attaches to a run already going.
-`artel qa show` never applies it: reading a run is a different question from
-whether the game passed, so it exits `0` whatever the verdict.
+| Flag | Value |
+| --- | --- |
+| `--model` | model id; `artel qa models` lists them |
+| `--prompt-version` | prompt version |
+| `--reasoning-effort` | reasoning effort for the model |
+| `--arch` | agent structure as a JSON object, or `@path` to a file holding one |
+| `--content-map-mode` | `on`, `frozen` or `off` |
+| `--knowledge-mode` | `learning`, `frozen` or `off` |
+| `--label` | the experiment name |
 
-`--json` on a watching command puts the final result on stdout as one line, the
-same shape `artel qa show` prints, and streams the progress to stderr as one
-JSON object per line. Without `--json` the same events are human lines on
-stderr. Both come from the same event, so the two can never disagree.
+**The exit code is the verdict.** `0` only when the run passed. Failed,
+cancelled and unknown are all `1`. A run whose connection died before a summary
+is unknown, so it never passes CI by accident. `artel qa watch` follows a run
+already going and uses the same rule. `artel qa show` reads a run and always
+exits `0`.
 
-**When the event stream drops,** the CLI reconnects from the last event it saw,
-five times, backing off from 500ms to 8s, and resets that count whenever an
-event arrives. A reconnect loses nothing: the server resumes from the event id.
-If the reconnects run out, the CLI asks the server once more how the run is
-doing. Already finished — the result is read from the run's log and reported
-normally, because a dead socket does not change what the agent decided. Still
-going — it fails with `qa_watch_disconnected` and says the run keeps going on
-the server. A dropped connection is never reported as a failed test, and never
-as a passing one. `--timeout <seconds>` caps the whole wait (default one hour,
-`0` for no cap) so a stuck run cannot hold a CI job open forever.
+With `--json`, a following command prints the final result on stdout as one line
+and the progress on stderr as one JSON object per line.
+
+If the event stream drops, the CLI reconnects up to five times without losing
+events. If it still cannot reconnect, it checks the run once more: a finished
+run is reported normally, and a run still going fails with
+`qa_watch_disconnected` while the run continues on the server. `--timeout
+<seconds>` caps the whole wait (default one hour, `0` for no cap).
 
 **`artel qa cancel <run id>`** stops a run and frees its game instance.
-Scenarios it never reached have no verdict — unknown, not failed.
 
-**`artel qa diff <base> <target>`** puts two configurations side by side. Each
-side is a comma-separated selector over the same four axes, written with the
-field names the API uses:
+**`artel qa diff <base> <target>`** compares two configurations. Each side
+selects runs by `model`, `promptVersion`, `reasoningEffort` and `arch`:
 
 ```
 artel qa diff \
@@ -216,61 +145,13 @@ artel qa diff \
   'model=openai/gpt-5.6-luna,promptVersion=v16' --project <id>
 ```
 
-An axis you leave out matches every value of it, and the matching cells are
-added together. That is safe only because `/api/qa-stats` returns sums rather
-than ratios: sums can be added, ratios cannot. The CLI keeps that discipline —
-`--json` carries the two sums and their difference, not the rendered table, and
-every rate the human table prints is derived from those sums with its
-denominator shown next to it. A cell whose axes are unknown (a run from before
-the server recorded them) never matches a selector that names an axis.
-
-## Reading the content map an arm ran against
-
-`--content-map-mode` is an axis `artel qa run` and `artel qa matrix` measure, so
-when the arm that had the map on did worse, the next question is whether the map
-was empty or wrong. **`artel map show --project <id> --build <id>`** answers the
-first half: how many scenes, scene edges, screen transitions and spec gaps the
-map holds, how many `evidence` features have been confirmed by a run, and what
-the last scan did.
-
-It distinguishes two kinds of nothing, because they need different next steps: a
-build with no `evidence` document registered at all, and one whose document is
-registered but has not been ingested into the map yet. `last scan` reads
-`none since the server started` when nothing has asked this build to scan since
-the server came up — that is not the same as the map having appeared without a
-scan.
-
-`--watch` follows the scan and ingest stream before reading. It follows a scan
-someone else started; **`artel doc scan` is what starts one.** The server never
-ends that stream on its own, so `--timeout` caps the wait.
-
-Regenerating test cases from the map is not here. That endpoint lives under
-`/internal/`, which is the server-to-server trust boundary — it carries no
-per-user access check, so a user tool must not call it.
-
-## Reading what a run found
-
-A QA run produces two things: a verdict, and the defects it found on the way.
-`artel issue` reads and settles the second. These are the run's findings, not
-Jira issues.
-
-**`artel issue list --project <id>`** names them newest first, each with the run
-and try it came from so `artel qa show <run id>` opens the context. `--status`
-and `--severity` are the server's own filters, so they narrow the whole project
-rather than the page that came back. The listing is a cursor page: when there is
-more, the output says so and prints the `--before` cursor that opens the next
-one.
-
-**`artel issue resolve <id>`** and **`artel issue reopen <id>`** change the mark.
-The server answers these with an empty `204`, so `--json` reports what the CLI
-knows — which issue, which action, and the status that action means — rather than
-a re-read of the issue. There is no endpoint that returns one issue, so
-`artel issue list` is how you check.
+A field you leave out matches every value, and the matching runs are added
+together. Every rate in the table shows its denominator.
 
 ## Running a matrix of configurations
 
-**`artel qa matrix`** expands the cartesian product of the axis lists and runs
-every combination, spread over several game builds:
+**`artel qa matrix`** runs every combination of the values you list, spread over
+several game builds:
 
 ```
 artel qa matrix \
@@ -284,105 +165,53 @@ artel qa matrix \
   --slot /path/to/BuildB/WordVenture.exe
 ```
 
-That is 2 test runs × 1 model × 2 content map modes × 1 knowledge mode = 4 runs,
-spread over 2 slots. The product is expanded in a fixed order — test run, model,
-prompt version, reasoning effort, agent structure (`--arch`), content map mode,
-knowledge mode — and combination *i* goes to slot *i mod slots*, so running the
-same command twice sends the same combination to the same slot.
+That is 2 test runs × 2 content map modes = 4 runs over 2 slots.
 
-**An axis given one value is pinned, not multiplied.** `--model` above does not
-add combinations; it makes every run use that model. That is the reason to pass
-it even when you are not comparing models: leave it out and the server picks per
-run, so a default that changes while the matrix is running puts two models in one
-table and nothing in the output says so.
+- Comma-separated values multiply the runs. A flag with one value applies to
+  every run. Pass `--model` even when you are not comparing models, so the
+  server cannot pick different models within one matrix.
+- `--arch` is repeated instead of comma-separated, and each value needs its own
+  `"label"` field.
+- `--reasoning-max-tokens` applies to every run.
+- `--repeat n` runs each combination n times, because one run per combination
+  cannot separate the configuration from chance.
+- Each `--slot` runs one QA run at a time, and the game is relaunched for every
+  run.
+- **Each slot needs its own build with a different `productName`.** Two builds
+  with the same `productName` register as one game instance and overwrite each
+  other's saves.
+- `--out <path>` writes each finished run to a file as it finishes, one JSON
+  object per line. `--resume` skips the runs already in that file and runs the
+  rest.
+- A failed combination does not stop the others. The exit code is `0` only when
+  every combination passed.
 
-`--model`, `--prompt-version` and `--reasoning-effort` are the same axes
-`artel qa diff` selects on, so a matrix can now produce the runs that diff
-compares. `artel qa models` lists the ids and the efforts each model takes.
+## Reading the content map
 
-**`--arch` is an axis too, but it is repeated rather than comma-separated** —
-each occurrence is a JSON object, or `@path` naming a file that holds one, and a
-JSON object cannot be split on commas the way the other axes are. Leave it out
-and every combination runs with the server's own structure, still one cell.
-Every value used as an axis needs its own `"label"` field: the combination's
-name for that arch comes only from that field, never from the file name, so
-moving the file does not rename the combination and `--out`/`--resume` never
-lose track of which arm a line belongs to. Giving the same structure twice —
-say once inline and once as `@path` — is always a mistake, since repeating a
-combination is `--repeat`'s job; the CLI compares the parsed JSON with keys
-sorted, not the raw text, so it catches that even when the two spellings differ.
+**`artel map show --project <id> --build <id>`** shows what the content map of a
+build holds: scenes, scene edges, screen transitions, spec gaps, confirmed
+`evidence` features, and the last scan. It says whether the build has no
+`evidence` document at all or has one that is not ingested yet.
 
-`--reasoning-max-tokens` is a fixed value for the whole matrix rather than an
-axis. The token budget only means something under a chosen model and effort, so
-multiplying it against those two produces combinations that do not go together.
-A work-stealing queue would finish sooner but would decide that by timing, and
-which build a run happened on is part of the measurement.
+`artel doc scan` starts a scan. `--watch` follows a scan before reading, capped
+by `--timeout`.
 
-**`--repeat n` runs each combination n times.** A QA run is not deterministic:
-the same configuration twice does not give the same result. A table with one run
-per cell cannot tell whether the difference you see came from the arm or from
-that day's luck. The runs stay separate in the output — each carries the
-combination it belongs to and which repeat it was — and the human summary adds a
-line per combination saying how many of its runs passed. The CLI counts; it does
-not average. What sits on top of that count is for whatever reads the list, the
-same way `artel qa diff` hands out sums rather than ratios.
+## Reading what a run found
 
-**A slot runs one QA run at a time.** Two runs on one game instance do not
-overlap — the second ends the first, and the server only allows that with
-`force` — so a slot is a work queue, not a parallelism knob.
+`artel issue` handles the defects QA runs found. These are not Jira issues.
 
-**The game is relaunched between runs.** If the previous run left the game in a
-battle screen, the next run's first step ("observe the title screen") starts
-from there and the comparison is no longer between the arms. Each combination
-gets a game this command launched and kills when the run ends.
+**`artel issue list --project <id>`** lists them newest first, with the run each
+came from. `--status` and `--severity` filter them. When there are more, the
+output prints the `--before` cursor for the next page.
 
-**Each slot needs its own build.** `sdk_uuid` (`ArtelSdkIdentity`) and the game's
-`StagePosition` (`SaveLoadController`) both live in `PlayerPrefs`, and on Windows
-that store is keyed by `productName`. Two builds that share a `productName` fold
-into a single game instance and overwrite each other's saves. This CLI does not
-build anything: prepare builds with different `productName` values and pass their
-paths. It can only reject the same path twice — two different paths with the same
-`productName` are yours to avoid.
+**`artel issue resolve <id>`** and **`artel issue reopen <id>`** change an
+issue's status.
 
-Registration is serialized across slots even though the runs are not. The CLI
-finds the instance a launch registered by diffing the project's instance list
-before and against after, and two launches registering at the same moment land in
-the same diff. Registration takes seconds and a run takes minutes, so the wait
-costs almost nothing.
+## Before automating a run
 
-**`--out <path>` writes each finished run to a file the moment it finishes,** one
-JSON object per line. A matrix that dies at run 7 of 12 leaves the first 6
-readable; without it those verdicts existed only in output that is now gone.
-`--resume` then skips the runs already in that file and runs the rest, and the
-final result is the same shape either way.
+**Do not launch the game with `-batchmode`.** The SDK captures the screen from
+the back buffer, and batchmode has none. The screen capture comes back blank
+with no error.
 
-`--resume` takes no path of its own — it resumes the file `--out` writes.
-Reading one file while writing another would be a state nobody can say the
-meaning of.
-
-A run is recognised by its axis values and its repeat number, not by where it sat
-in the expansion order. Add one `--model` and every combination's position
-shifts, so a position-based key would make `--resume` skip a run that never
-happened. If the file holds a run the current axes would never produce, the
-command stops before launching anything: resuming onto another experiment's file
-would put two experiments in one table.
-
-**One failed combination does not stop the others.** The failure is recorded
-against that combination, the slot moves on to its next one, and the summary
-lists what failed and why. The exit code is `0` only when every combination
-passed — the same rule as `artel qa run`. `--json` puts the whole matrix on
-stdout as one line, with `testRunId`, `contentMapMode`, `knowledgeMode`,
-`qaRunId`, `status`, the step counts and the elapsed time for each combination;
-progress goes to stderr. The CLI never invents an arm name for a combination:
-the axis values say what it was.
-
-## Two things worth knowing before automating a run
-
-**Do not launch the game with `-batchmode`.** The SDK captures the screen by
-reading the back buffer, and batchmode presents none. The capture comes back
-blank — grey without a graphics device, black with one — and no error is
-raised, so the failure looks like a rendering bug in the game.
-
-**The SDK attaches itself only to a development build.** A release build
-carries no SDK unless a scene explicitly places one, and a game without the SDK
-cannot be driven.
+**The SDK attaches itself only to a development build.** A release build has no
+SDK unless a scene places one, and a game without the SDK cannot be driven.
