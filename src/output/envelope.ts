@@ -2,6 +2,10 @@ import type { ErrorCode } from '../errors.js';
 import type {
   CaseCreateBatchPayload,
   CaseDeletePayload,
+  CaseFolderDeletePayload,
+  CaseFolderListPayload,
+  CaseMovePayload,
+  TestCaseFolderPayload,
   CaseListPayload,
   ContentMapScanPayload,
   ContentMapViewPayload,
@@ -50,6 +54,10 @@ export type CommandPayload =
   | CaseListPayload
   | CaseCreateBatchPayload
   | CaseDeletePayload
+  | CaseFolderListPayload
+  | TestCaseFolderPayload
+  | CaseFolderDeletePayload
+  | CaseMovePayload
   | ScenarioPayload
   | ScenarioListPayload
   | ScenarioApprovePayload

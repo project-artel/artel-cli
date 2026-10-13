@@ -29,6 +29,8 @@ export interface TestCase {
   status: string | null;
   verificationStatus: string;
   lastVerifiedBuildId: string | null;
+  /** 이 케이스가 든 folder(ARTEL-969). `null` 이면 folder 없음이다. */
+  folderId: string | null;
   createdAt: string;
 }
 
@@ -43,6 +45,8 @@ export interface TestCaseCreateRequest {
   step?: string | undefined;
   precondition?: string | undefined;
   expectedValue?: string | undefined;
+  /** 넣을 folder. 없으면 folder 없음이다. */
+  folderId?: string | undefined;
 }
 
 /** `TestCaseUpdateRequest`. 준 필드만 반영되고, 나머지는 기존 값을 유지한다(서버 쪽 규칙). */
@@ -192,6 +196,7 @@ function parseTestCase(value: unknown, field: string, endpoint: string): TestCas
       `${field}.lastVerifiedBuildId`,
       endpoint,
     ),
+    folderId: asNullableString(item['folderId'], `${field}.folderId`, endpoint),
     createdAt: asString(item['createdAt'], `${field}.createdAt`, endpoint),
   };
 }

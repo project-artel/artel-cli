@@ -7,7 +7,12 @@ import { runAuthLogout } from './commands/auth/logout.js';
 import { runAuthStatus } from './commands/auth/status.js';
 import { runCaseCreate } from './commands/case/create.js';
 import { runCaseDelete } from './commands/case/delete.js';
+import { runCaseFolderCreate } from './commands/case/folder/create.js';
+import { runCaseFolderDelete } from './commands/case/folder/delete.js';
+import { runCaseFolderList } from './commands/case/folder/list.js';
+import { runCaseFolderUpdate } from './commands/case/folder/update.js';
 import { runCaseList } from './commands/case/list.js';
+import { runCaseMove } from './commands/case/move.js';
 import { runCaseShow } from './commands/case/show.js';
 import { runCaseUpdate } from './commands/case/update.js';
 import { runDocScan } from './commands/doc/scan.js';
@@ -833,16 +838,32 @@ export async function runCli(
     .command('list')
     .description("List a project's test cases")
     .requiredOption('--project <id>', 'project whose test cases to list')
+    .option('--folder <id>', 'list only the test cases directly in this folder')
+    .option('--root', 'list only the test cases in no folder', false)
     .option('--json', 'emit the machine-readable result instead of human output', false)
     .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
-    .action(async (options: { project: string; json: boolean; apiUrl?: string | undefined }) => {
-      json = options.json;
-      await runCaseList(
-        { json: options.json, project: options.project, apiUrl: options.apiUrl },
-        sink,
-        env,
-      );
-    });
+    .action(
+      async (options: {
+        project: string;
+        folder?: string | undefined;
+        root: boolean;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runCaseList(
+          {
+            json: options.json,
+            project: options.project,
+            folder: options.folder,
+            root: options.root,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
 
   caseGroup
     .command('show')
@@ -876,12 +897,14 @@ export async function runCli(
       '--file <path>',
       'path to a JSON test case object, or a JSON array of them; omit to read standard input',
     )
+    .option('--folder <id>', 'folder for every test case whose body does not set folderId')
     .option('--json', 'emit the machine-readable result instead of human output', false)
     .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
     .action(
       async (options: {
         project: string;
         file?: string | undefined;
+        folder?: string | undefined;
         json: boolean;
         apiUrl?: string | undefined;
       }) => {
@@ -891,6 +914,7 @@ export async function runCli(
             json: options.json,
             project: options.project,
             file: options.file,
+            folder: options.folder,
             apiUrl: options.apiUrl,
           },
           sink,
@@ -950,6 +974,155 @@ export async function runCli(
         json = options.json;
         await runCaseDelete(
           caseId,
+          { json: options.json, project: options.project, apiUrl: options.apiUrl },
+          sink,
+          env,
+        );
+      },
+    );
+
+  caseGroup
+    .command('move')
+    .description('Move test cases into a folder, or out of every folder with --root')
+    .argument('<case-ids...>', 'test cases to move')
+    .requiredOption('--project <id>', 'project the test cases belong to')
+    .option('--folder <id>', 'folder to move the test cases into')
+    .option('--root', 'move the test cases out of every folder', false)
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (
+        caseIds: string[],
+        options: {
+          project: string;
+          folder?: string | undefined;
+          root: boolean;
+          json: boolean;
+          apiUrl?: string | undefined;
+        },
+      ) => {
+        json = options.json;
+        await runCaseMove(
+          caseIds,
+          {
+            json: options.json,
+            project: options.project,
+            folder: options.folder,
+            root: options.root,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  const caseFolder = caseGroup
+    .command('folder')
+    .description("Create, list, rename, move, and delete a project's test case folders");
+
+  caseFolder
+    .command('list')
+    .description("List a project's test case folders as a tree")
+    .requiredOption('--project <id>', 'project whose folders to list')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(async (options: { project: string; json: boolean; apiUrl?: string | undefined }) => {
+      json = options.json;
+      await runCaseFolderList(
+        { json: options.json, project: options.project, apiUrl: options.apiUrl },
+        sink,
+        env,
+      );
+    });
+
+  caseFolder
+    .command('create')
+    .description('Create a folder at the top level, or under --parent')
+    .requiredOption('--project <id>', 'project to create the folder in')
+    .requiredOption('--name <name>', 'folder name, unique among its siblings')
+    .option('--parent <id>', 'folder to create it under; omit for the top level')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (options: {
+        project: string;
+        name: string;
+        parent?: string | undefined;
+        json: boolean;
+        apiUrl?: string | undefined;
+      }) => {
+        json = options.json;
+        await runCaseFolderCreate(
+          {
+            json: options.json,
+            project: options.project,
+            name: options.name,
+            parent: options.parent,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  caseFolder
+    .command('update')
+    .description('Rename a folder, or move it under another folder or to the top level')
+    .argument('<folder-id>', 'folder to update')
+    .requiredOption('--project <id>', 'project the folder belongs to')
+    .option('--name <name>', 'new folder name')
+    .option('--parent <id>', 'move the folder under this folder')
+    .option('--root', 'move the folder to the top level', false)
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (
+        folderId: string,
+        options: {
+          project: string;
+          name?: string | undefined;
+          parent?: string | undefined;
+          root: boolean;
+          json: boolean;
+          apiUrl?: string | undefined;
+        },
+      ) => {
+        json = options.json;
+        await runCaseFolderUpdate(
+          folderId,
+          {
+            json: options.json,
+            project: options.project,
+            name: options.name,
+            parent: options.parent,
+            root: options.root,
+            apiUrl: options.apiUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  caseFolder
+    .command('delete')
+    .description(
+      'Delete a folder and its subfolders; the test cases inside are kept and lose their folder',
+    )
+    .argument('<folder-id>', 'folder to delete')
+    .requiredOption('--project <id>', 'project the folder belongs to')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(
+      async (
+        folderId: string,
+        options: { project: string; json: boolean; apiUrl?: string | undefined },
+      ) => {
+        json = options.json;
+        await runCaseFolderDelete(
+          folderId,
           { json: options.json, project: options.project, apiUrl: options.apiUrl },
           sink,
           env,

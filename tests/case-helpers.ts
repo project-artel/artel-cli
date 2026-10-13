@@ -19,20 +19,32 @@ export interface FakeTestCase {
   status: string | null;
   verificationStatus: string;
   lastVerifiedBuildId: string | null;
+  folderId: string | null;
   createdAt: string;
   evidenceGaps: string[];
+}
+
+export interface FakeFolder {
+  id: string;
+  projectId: string;
+  parentId: string | null;
+  name: string;
+  contentMapId: string | null;
+  gameBuildId: string | null;
 }
 
 export interface FakeCaseServerOptions {
   /** 멤버로 접근 가능한 프로젝트. 나머지 projectId 는 전부 비멤버로 취급한다. */
   memberProjectIds: string[];
   items?: FakeTestCase[];
+  folders?: FakeFolder[];
 }
 
 export interface FakeCaseServer {
   baseUrl: string;
   requests: { method: string; path: string; body: unknown }[];
   items: () => FakeTestCase[];
+  folders: () => FakeFolder[];
   close(): Promise<void>;
 }
 
@@ -50,8 +62,21 @@ export function fakeTestCase(overrides: Partial<FakeTestCase> = {}): FakeTestCas
     status: null,
     verificationStatus: 'DRAFT',
     lastVerifiedBuildId: null,
+    folderId: null,
     createdAt: FIXED_CREATED_AT,
     evidenceGaps: [],
+    ...overrides,
+  };
+}
+
+export function fakeFolder(overrides: Partial<FakeFolder> = {}): FakeFolder {
+  return {
+    id: '100',
+    projectId: '1',
+    parentId: null,
+    name: 'Combat',
+    contentMapId: null,
+    gameBuildId: null,
     ...overrides,
   };
 }
@@ -61,6 +86,166 @@ export async function startFakeCaseServer(options: FakeCaseServerOptions): Promi
   const items = new Map<string, FakeTestCase>((options.items ?? []).map((item) => [item.id, item]));
   const requests: { method: string; path: string; body: unknown }[] = [];
   let nextId = Math.max(0, ...[...items.keys()].map((id) => Number.parseInt(id, 10) || 0)) + 1;
+  const folders = new Map<string, FakeFolder>(
+    (options.folders ?? []).map((folder) => [folder.id, folder]),
+  );
+  let nextFolderId =
+    Math.max(99, ...[...folders.keys()].map((id) => Number.parseInt(id, 10) || 0)) + 1;
+
+  /**
+   * `TestCaseFolderController` 와 `POST /test-cases/move` 를 흉내 낸다. 서버 규칙을 옮긴다:
+   * 비멤버와 다른 프로젝트 folder 는 404, 같은 부모 아래 같은 이름은 409, 자기 자신이나
+   * 하위로 옮기면 400, PUT 의 `parentId` 가 비면 최상위로 옮긴다.
+   */
+  function handleFolderRoutes(
+    method: string,
+    pathname: string,
+    body: unknown,
+    response: http.ServerResponse,
+  ): boolean {
+    const moveMatch = /^\/api\/projects\/([^/]+)\/test-cases\/move$/.exec(pathname);
+    const listMatch = /^\/api\/projects\/([^/]+)\/test-case-folders$/.exec(pathname);
+    const itemMatch = /^\/api\/projects\/([^/]+)\/test-case-folders\/([^/]+)$/.exec(pathname);
+    const projectId = decodeURIComponent((moveMatch ?? listMatch ?? itemMatch)?.[1] ?? '');
+    if (moveMatch === null && listMatch === null && itemMatch === null) {
+      return false;
+    }
+    if (!memberProjectIds.has(projectId)) {
+      send(response, 404, notFound(`Project ${projectId}`));
+      return true;
+    }
+    const fields = (body as Record<string, unknown> | null) ?? {};
+    const inProject = (id: string | null): FakeFolder | undefined =>
+      id === null
+        ? undefined
+        : [...folders.values()].find((f) => f.id === id && f.projectId === projectId);
+    const optionalId = (value: unknown): string | null =>
+      typeof value === 'string' && value !== '' ? value : null;
+
+    if (moveMatch !== null && method === 'POST') {
+      const target = optionalId(fields['folderId']);
+      if (target !== null && inProject(target) === undefined) {
+        send(response, 404, notFound(`Folder ${target}`));
+        return true;
+      }
+      const caseIds = Array.isArray(fields['caseIds']) ? (fields['caseIds'] as string[]) : [];
+      let moved = 0;
+      for (const caseId of new Set(caseIds)) {
+        const existing = items.get(caseId);
+        if (existing !== undefined && existing.projectId === projectId) {
+          items.set(caseId, { ...existing, folderId: target });
+          moved += 1;
+        }
+      }
+      send(response, 200, JSON.stringify({ moved }));
+      return true;
+    }
+
+    if (listMatch !== null && method === 'GET') {
+      const mine = [...folders.values()].filter((f) => f.projectId === projectId);
+      send(response, 200, JSON.stringify({ items: mine.map(toFolderShape) }));
+      return true;
+    }
+
+    const existing =
+      itemMatch === null ? undefined : inProject(decodeURIComponent(itemMatch[2] ?? ''));
+    if (itemMatch !== null && existing === undefined) {
+      send(response, 404, notFound('Folder'));
+      return true;
+    }
+
+    if (method === 'DELETE' && existing !== undefined) {
+      const doomed = new Set([existing.id]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const folder of folders.values()) {
+          if (folder.parentId !== null && doomed.has(folder.parentId) && !doomed.has(folder.id)) {
+            doomed.add(folder.id);
+            grew = true;
+          }
+        }
+      }
+      for (const id of doomed) {
+        folders.delete(id);
+      }
+      for (const item of items.values()) {
+        if (item.folderId !== null && doomed.has(item.folderId)) {
+          items.set(item.id, { ...item, folderId: null });
+        }
+      }
+      response.writeHead(204);
+      response.end();
+      return true;
+    }
+
+    if (method === 'POST' || method === 'PUT') {
+      const name = typeof fields['name'] === 'string' ? fields['name'].trim() : '';
+      if (name === '') {
+        send(response, 400, invalidRequest('folder 이름은 1자 이상이어야 합니다.'));
+        return true;
+      }
+      const parentId = optionalId(fields['parentId']);
+      if (parentId !== null && inProject(parentId) === undefined) {
+        send(response, 404, notFound(`Folder ${parentId}`));
+        return true;
+      }
+      if (existing !== undefined) {
+        for (
+          let cursor = parentId;
+          cursor !== null;
+          cursor = folders.get(cursor)?.parentId ?? null
+        ) {
+          if (cursor === existing.id) {
+            send(
+              response,
+              400,
+              invalidRequest('folder 를 자기 자신이나 하위 folder 아래로 옮길 수 없습니다.'),
+            );
+            return true;
+          }
+        }
+      }
+      const clash = [...folders.values()].some(
+        (f) =>
+          f.projectId === projectId &&
+          f.parentId === parentId &&
+          f.name === name &&
+          f.id !== existing?.id,
+      );
+      if (clash) {
+        send(
+          response,
+          409,
+          JSON.stringify({
+            code: 'conflict',
+            message: '같은 위치에 같은 이름의 folder 가 있습니다.',
+          }),
+        );
+        return true;
+      }
+      const saved: FakeFolder =
+        existing === undefined
+          ? {
+              id: String(nextFolderId),
+              projectId,
+              parentId,
+              name,
+              contentMapId: null,
+              gameBuildId: null,
+            }
+          : { ...existing, parentId, name };
+      if (existing === undefined) {
+        nextFolderId += 1;
+      }
+      folders.set(saved.id, saved);
+      send(response, existing === undefined ? 201 : 200, JSON.stringify(toFolderShape(saved)));
+      return true;
+    }
+
+    send(response, 404, notFound('route'));
+    return true;
+  }
 
   const server = http.createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1');
@@ -69,6 +254,10 @@ export async function startFakeCaseServer(options: FakeCaseServerOptions): Promi
     readBody(request, (rawBody) => {
       const body = rawBody.length === 0 ? null : (JSON.parse(rawBody) as unknown);
       requests.push({ method, path: url.pathname, body });
+
+      if (handleFolderRoutes(method, url.pathname, body, response)) {
+        return;
+      }
 
       const listMatch = /^\/api\/projects\/([^/]+)\/test-cases$/.exec(url.pathname);
       if (method === 'GET' && listMatch !== null) {
@@ -91,6 +280,15 @@ export async function startFakeCaseServer(options: FakeCaseServerOptions): Promi
         const step = asOptionalString(fields['step']);
         const precondition = asOptionalString(fields['precondition']);
         const expectedValue = asOptionalString(fields['expectedValue']);
+        const folderId = asOptionalString(fields['folderId']);
+        if (
+          folderId !== undefined &&
+          folderId !== '' &&
+          folders.get(folderId)?.projectId !== projectId
+        ) {
+          send(response, 404, notFound(`Folder ${folderId}`));
+          return;
+        }
         const missing = [
           ['scene', scene],
           ['step', step],
@@ -111,6 +309,7 @@ export async function startFakeCaseServer(options: FakeCaseServerOptions): Promi
           status: null,
           verificationStatus: 'DRAFT',
           lastVerifiedBuildId: null,
+          folderId: folderId !== undefined && folderId !== '' ? folderId : null,
           createdAt: FIXED_CREATED_AT,
           evidenceGaps: [],
         };
@@ -204,6 +403,7 @@ export async function startFakeCaseServer(options: FakeCaseServerOptions): Promi
     baseUrl: `http://127.0.0.1:${String(address.port)}`,
     requests,
     items: () => [...items.values()],
+    folders: () => [...folders.values()],
     async close() {
       server.closeAllConnections();
       await new Promise<void>((resolve) =>
@@ -218,6 +418,12 @@ export async function startFakeCaseServer(options: FakeCaseServerOptions): Promi
 function toListShape(item: FakeTestCase): Omit<FakeTestCase, 'evidenceGaps'> {
   const { evidenceGaps, ...rest } = item;
   void evidenceGaps;
+  return rest;
+}
+
+function toFolderShape(folder: FakeFolder): Omit<FakeFolder, 'projectId'> {
+  const { projectId, ...rest } = folder;
+  void projectId;
   return rest;
 }
 

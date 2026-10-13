@@ -1,7 +1,7 @@
 import { CliError } from '../errors.js';
 import type { TestCaseCreateRequest, TestCaseUpdateRequest } from '../http/testcase.js';
 
-const CREATE_FIELDS = ['scene', 'step', 'precondition', 'expectedValue'] as const;
+const CREATE_FIELDS = ['scene', 'step', 'precondition', 'expectedValue', 'folderId'] as const;
 const UPDATE_FIELDS = [
   'scene',
   'step',
