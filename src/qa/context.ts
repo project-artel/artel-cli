@@ -19,10 +19,8 @@ export async function resolveQaContext(
   env: NodeJS.ProcessEnv,
   apiUrl: string | undefined,
 ): Promise<QaContext> {
-  // 자격증명을 먼저 읽는다. 파일에 적힌 `apiBaseUrl` 이 주소의 마지막 후보라 순서가 이렇게
-  // 될 수밖에 없고, 그래서 "로그인도 안 했고 주소도 없는" 경우의 오류가
-  // `missing_api_base_url` 이 아니라 `no_credential` 이 된다. 둘 다 참이고, 고치는 방법이
-  // 하나뿐인 쪽을 말한다 — `artel auth login` 한 번이 자격증명과 주소를 함께 채운다.
+  // 자격증명을 먼저 읽는다. 파일에 적힌 `apiBaseUrl` 이 환경 변수 다음, 기본값 앞의 후보라
+  // 주소를 정하기 전에 파일이 필요하다.
   const resolution = await resolveCredential(env);
   if (resolution.credential === null) {
     throw new CliError(

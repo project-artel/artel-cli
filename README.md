@@ -62,9 +62,15 @@ that file somewhere else. On Windows the file goes to
 `%USERPROFILE%\.artel\credentials.json` and leans on the profile ACL, because
 NTFS does not enforce POSIX mode bits.
 
-Two environment variables point the CLI at a deployment:
-`ARTEL_API_BASE_URL` (required — the orchestration API has no default host yet)
-and `ARTEL_CONSOLE_BASE_URL` (defaults to `https://artel.kr`).
+With no flags, the CLI talks to the stage deployment: the API at
+`https://stage-orch.artel.kr` and the console at `https://home.stage.artel.kr`,
+the same pair the SDK uses by default. Two environment variables point it
+elsewhere: `ARTEL_API_BASE_URL` (or `--api-url`) and `ARTEL_CONSOLE_BASE_URL`
+(or `--console-url`). The address `artel auth login` used is stored with the
+credential and becomes the default for later commands. The console must be the
+one that talks to the API — a login code issued by one deployment cannot be
+consumed by another — so an API with no known console, such as
+`http://localhost:8080`, needs `--console-url` too.
 
 `artel auth status` says which credential would be used and where it came from.
 It never prints the token; it prints a `fingerprint`, the first 12 hex of
