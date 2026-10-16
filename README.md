@@ -30,6 +30,18 @@ holds step-by-step instructions written for the agent.
 Install the ARTEL CLI on this machine by following https://artel.kr/cli.md
 ```
 
+The ARTEL skills teach an AI coding agent (Claude Code, Codex, Cursor and others)
+to set up the CLI, the Unity SDK and the local MCP server, and to add cheats and
+behaviors to a game. Install them into the project with the command below; add
+`-g` to install for every project.
+
+```
+npx skills add project-artel/artel-skills
+```
+
+The full list of skills is in
+[`https://github.com/project-artel/artel-skills`](https://github.com/project-artel/artel-skills).
+
 ## Commands
 
 ```
