@@ -1822,8 +1822,12 @@ export async function runCli(
   const serverConfig = server
     .command('config')
     .description(
-      'Show the saved network settings: host, port, public URL and TLS files. Run "config set" to change them',
-    )
+      'Show or change the saved network settings: host, port, public URL and TLS files. Without a subcommand it shows them',
+    );
+
+  serverConfig
+    .command('show', { isDefault: true })
+    .description('Show the saved network settings')
     .option('--json', 'emit the machine-readable result instead of human output', false)
     .action(async (options: { json: boolean }) => {
       json = options.json;
