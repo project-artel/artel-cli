@@ -47,13 +47,6 @@ function closeServer(server: net.Server): Promise<void> {
   return new Promise((resolve) => server.close(() => resolve()));
 }
 
-async function freePort(): Promise<number> {
-  const server = await occupy(0);
-  const port = (server.address() as net.AddressInfo).port;
-  await closeServer(server);
-  return port;
-}
-
 describe('data directory', () => {
   it('follows each OS convention', () => {
     expect(defaultDataDir({ XDG_DATA_HOME: '/xdg' }, 'linux', '/home/a')).toBe('/xdg/artel');
@@ -110,14 +103,15 @@ describe('config.json', () => {
   });
 
   it('reuses a saved port while it is free and moves off one another program holds', async () => {
-    const saved = {
-      proxy: await freePort(),
-      postgres: await freePort(),
-      orchestration: await freePort(),
-      orchestrationInternal: await freePort(),
-      agentServer: await freePort(),
-    };
-    const blocker = await occupy(saved.postgres);
+    // 다른 테스트 파일이 같은 시각에 빈 port 를 받아 가므로, 다섯 개를 잡아 둔 채로 고르고
+    // resolvePorts 직전에 postgres 것만 남기고 놓는다.
+    const holders = await Promise.all([0, 0, 0, 0, 0].map(() => occupy(0)));
+    const [proxy, postgres, orchestration, orchestrationInternal, agentServer] = holders.map(
+      (server) => (server.address() as net.AddressInfo).port,
+    ) as [number, number, number, number, number];
+    const saved = { proxy, postgres, orchestration, orchestrationInternal, agentServer };
+    const blocker = holders[1] as net.Server;
+    await Promise.all(holders.filter((server) => server !== blocker).map(closeServer));
     try {
       const ports = await resolvePorts(saved, { host: '127.0.0.1' });
       expect(ports.proxy).toBe(saved.proxy);

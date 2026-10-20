@@ -250,8 +250,11 @@ posixOnly('supervisor with fake services', () => {
     );
     const refused = (await runtime.records()).filter((line) => line === 'orchestration refused');
     expect(refused).toHaveLength(5);
-    const status = await stackStatus({ dataDir: runtime.dataDir });
-    expect(status.services.orchestration).toBe('crashed');
+    // state.json 은 event 뒤에 비동기로 쓰이므로 반영될 때까지 기다린다.
+    const status = await waitFor(async () => {
+      const current = await stackStatus({ dataDir: runtime.dataDir });
+      return current.services.orchestration === 'crashed' ? current : null;
+    });
     expect(status.services.postgres).toBe('ready');
   }, 30_000);
 });
