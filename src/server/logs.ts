@@ -8,11 +8,24 @@ export const DEFAULT_LOG_MAX_BYTES = 10 * 1024 * 1024;
 /** 밀어낸 파일을 몇 개까지 남기는가. `.1` 이 가장 최근이다. */
 export const DEFAULT_LOG_KEEP = 3;
 
-export type LogFileName = 'postgres' | 'orchestration' | 'agent-server' | 'proxy' | 'supervisor';
+/**
+ * `postgres` 는 supervisor 가 쓰는 initdb, pg_ctl, createdb 출력이고, `postgres-server` 는
+ * `pg_ctl -l` 로 postgres 자신이 쓰는 log 다. 둘을 한 파일에 두면 Windows 에서 기동이 실패한다:
+ * pg_ctl 은 `cmd.exe` 의 `>>` redirect 로 log 를 여는데, 그 redirect 는 다른 handle 이 쓰기로 열어
+ * 둔 파일을 열지 못하고, postgres 가 도는 동안은 반대로 supervisor 가 그 파일에 쓰지 못한다.
+ */
+export type LogFileName =
+  | 'postgres'
+  | 'postgres-server'
+  | 'orchestration'
+  | 'agent-server'
+  | 'proxy'
+  | 'supervisor';
 
 export const LOG_FILE_NAMES: readonly LogFileName[] = [
   'supervisor',
   'postgres',
+  'postgres-server',
   'orchestration',
   'agent-server',
   'proxy',

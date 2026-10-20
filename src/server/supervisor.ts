@@ -417,7 +417,7 @@ class Supervisor {
     const created = await ensureCluster(context);
     if (created) this.supervisorLine(`initdb created ${this.paths.pgdata}`);
     await writeSettings(context);
-    const postgresLog = logFilePath(this.paths.logs, 'postgres');
+    const postgresLog = logFilePath(this.paths.logs, 'postgres-server');
     rotateIfLarge(postgresLog);
     this.postgresFollower?.stop();
     this.postgresFollower = followFile(postgresLog, (line) => {

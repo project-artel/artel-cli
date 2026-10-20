@@ -68,11 +68,12 @@ async function exists(file: string): Promise<boolean> {
 }
 
 function startFailure(context: PostgresContext, step: string, output: string): SupervisorError {
-  const logFile = logFilePath(context.paths.logs, 'postgres');
+  const toolLog = logFilePath(context.paths.logs, 'postgres');
+  const serverLog = logFilePath(context.paths.logs, 'postgres-server');
   const detail = output.trim() ? ` Output: ${output.trim().split('\n').slice(-5).join(' | ')}` : '';
   return new SupervisorError(
     'server_start_failed',
-    `PostgreSQL ${step} failed. See ${logFile}.${detail}`,
+    `PostgreSQL ${step} failed. See ${toolLog} and ${serverLog}.${detail}`,
   );
 }
 
@@ -135,7 +136,7 @@ export async function startPostgres(context: PostgresContext): Promise<void> {
       '-D',
       context.paths.pgdata,
       '-l',
-      logFilePath(context.paths.logs, 'postgres'),
+      logFilePath(context.paths.logs, 'postgres-server'),
       '-w',
       '-t',
       '120',

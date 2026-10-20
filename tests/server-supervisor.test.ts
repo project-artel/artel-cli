@@ -75,6 +75,10 @@ posixOnly('supervisor with fake services', () => {
     ]);
     expect(records[0]).toContain('-U artel --auth=scram-sha-256 -E UTF8 --locale=C -D');
     expect(records[0]).toContain('pwfile-mode=600');
+    // pg_ctl 에는 supervisor 가 쓰는 postgres.log 와 다른 파일을 준다. Windows 의 cmd.exe redirect 는
+    // 다른 handle 이 쓰기로 연 파일을 열지 못한다.
+    expect(records[1]).toMatch(/log=.*postgres-server\.log$/);
+    expect(records[1]).not.toMatch(/log=.*[\\/]postgres\.log$/);
     expect(records[2]).toContain('artel');
     expect(records[2]).toContain('password=set');
     expect(records[3]).toContain('-Xmx512m -XX:+UseSerialGC -jar');

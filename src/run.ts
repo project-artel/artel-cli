@@ -1830,7 +1830,7 @@ export async function runCli(
   server
     .command('logs')
     .description('Print the last lines of a service log, or of every log when no service is given')
-    .argument('[service]', 'supervisor, postgres, orchestration, agent-server or proxy')
+    .argument('[service]', 'supervisor, postgres, postgres-server, orchestration, agent-server or proxy')
     .option('--follow', 'keep printing new lines until Ctrl-C', false)
     .option('--lines <n>', 'lines to print from the end of each log', '100')
     .action(async (service: string | undefined, options: { follow: boolean; lines: string }) => {
