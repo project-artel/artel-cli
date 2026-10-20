@@ -1,4 +1,5 @@
 import { CliError } from './errors.js';
+import { localStackUrl } from './server/local-stack.js';
 
 /**
  * 아무 주소도 주지 않았을 때 쓰는 orchestration API. SDK 의 `Server.cs` 기본 host 와 같은
@@ -51,8 +52,15 @@ function assertAbsoluteHttpUrl(value: string, sourceLabel: string): void {
   }
 }
 
-/** `default` 는 flag, 환경 변수, 자격증명 파일 어디에도 값이 없어 `DEFAULT_API_BASE_URL` 을 쓴 경우다. */
-export type ApiBaseUrlSource = 'flag' | 'env' | 'file' | 'default';
+/**
+ * `default` 는 flag, 환경 변수, 자격증명 파일 어디에도 값이 없어 `DEFAULT_API_BASE_URL` 을 쓴 경우다.
+ * `local-stack` 은 같은 경우지만 `ARTEL_RUNTIME_DIR` 이 있고 이 기계에 stack 이 떠 있어서 그
+ * stack 의 주소를 쓴 경우다. desktop app 이 함께 설치한 CLI 가 이렇게 동작한다.
+ */
+export type ApiBaseUrlSource = 'flag' | 'env' | 'file' | 'local-stack' | 'default';
+
+/** 떠 있는 local stack 의 주소를 찾는 함수. 테스트가 바꿔 끼운다. */
+export type LocalStackLookup = (env: NodeJS.ProcessEnv) => string | null;
 
 export interface EffectiveApiBaseUrl {
   /** 정규화만 한 값. 유효한 URL 인지는 보지 않는다. */
@@ -77,6 +85,7 @@ export interface EffectiveApiBaseUrl {
 export function effectiveApiBaseUrl(
   env: NodeJS.ProcessEnv = process.env,
   storedApiBaseUrl?: string | null,
+  lookupLocalStack: LocalStackLookup = localStackUrl,
 ): EffectiveApiBaseUrl {
   const envValue = env.ARTEL_API_BASE_URL?.trim();
   if (envValue) {
@@ -88,6 +97,11 @@ export function effectiveApiBaseUrl(
     return { value: normalizeBaseUrl(storedValue), source: 'file' };
   }
 
+  const local = lookupLocalStack(env);
+  if (local !== null) {
+    return { value: normalizeBaseUrl(local), source: 'local-stack' };
+  }
+
   return { value: DEFAULT_API_BASE_URL, source: 'default' };
 }
 
@@ -95,6 +109,7 @@ const SOURCE_LABELS: Record<ApiBaseUrlSource, string> = {
   flag: '--api-url',
   env: 'ARTEL_API_BASE_URL',
   file: 'the apiBaseUrl in the credentials file',
+  'local-stack': 'the URL of the local ARTEL stack',
   default: 'the built-in default API base URL',
 };
 
@@ -102,11 +117,12 @@ export function resolveApiBaseUrl(
   env: NodeJS.ProcessEnv = process.env,
   override?: string,
   storedApiBaseUrl?: string | null,
+  lookupLocalStack: LocalStackLookup = localStackUrl,
 ): string {
   const flagValue = override?.trim();
   const resolved: EffectiveApiBaseUrl = flagValue
     ? { value: normalizeBaseUrl(flagValue), source: 'flag' }
-    : effectiveApiBaseUrl(env, storedApiBaseUrl);
+    : effectiveApiBaseUrl(env, storedApiBaseUrl, lookupLocalStack);
 
   assertAbsoluteHttpUrl(resolved.value, SOURCE_LABELS[resolved.source]);
   return resolved.value;
@@ -141,11 +157,15 @@ function originOf(baseUrl: string): string | null {
  *
  * 그래서 console 을 말해 주지 않으면 `PAIRED_CONSOLE_BASE_URLS` 에서 API 의 짝을 찾고, 짝이
  * 없는 API 는 아무 console 로 때우지 않고 거절한다. `apiBaseUrl` 이 없으면 기본 API 의 짝을 쓴다.
+ *
+ * local stack 은 proxy 하나가 API 와 console 을 같은 origin 으로 내므로, API 가 그 stack 이면
+ * console 도 같은 주소다.
  */
 export function resolveConsoleBaseUrl(
   env: NodeJS.ProcessEnv = process.env,
   apiBaseUrl?: string,
   override?: string,
+  lookupLocalStack: LocalStackLookup = localStackUrl,
 ): string {
   const flagValue = override?.trim();
   const envValue = env.ARTEL_CONSOLE_BASE_URL?.trim();
@@ -163,6 +183,11 @@ export function resolveConsoleBaseUrl(
     return paired;
   }
 
+  const local = lookupLocalStack(env);
+  if (local !== null && origin !== null && originOf(local) === origin) {
+    return normalizeBaseUrl(local);
+  }
+
   const example = isLoopback(api) ? 'http://localhost:5173' : 'https://console.example.com';
   throw new CliError(
     'missing_console_base_url',
@@ -174,10 +199,21 @@ export function resolveConfig(
   env: NodeJS.ProcessEnv = process.env,
   overrides: ConfigOverrides = {},
   storedApiBaseUrl?: string | null,
+  lookupLocalStack: LocalStackLookup = localStackUrl,
 ): CliConfig {
-  const apiBaseUrl = resolveApiBaseUrl(env, overrides.apiBaseUrl, storedApiBaseUrl);
+  const apiBaseUrl = resolveApiBaseUrl(
+    env,
+    overrides.apiBaseUrl,
+    storedApiBaseUrl,
+    lookupLocalStack,
+  );
   return {
     apiBaseUrl,
-    consoleBaseUrl: resolveConsoleBaseUrl(env, apiBaseUrl, overrides.consoleBaseUrl),
+    consoleBaseUrl: resolveConsoleBaseUrl(
+      env,
+      apiBaseUrl,
+      overrides.consoleBaseUrl,
+      lookupLocalStack,
+    ),
   };
 }

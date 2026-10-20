@@ -64,6 +64,15 @@ export const ERROR_CODES = [
   'content_map_game_not_connected',
   'content_map_watch_timeout',
   'content_map_watch_disconnected',
+  'server_runtime_missing',
+  'server_runtime_invalid',
+  'server_privileged',
+  'server_port_in_use',
+  'server_start_failed',
+  'server_stop_failed',
+  'server_install_failed',
+  'server_checksum_mismatch',
+  'server_unsupported_platform',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
