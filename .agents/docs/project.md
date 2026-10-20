@@ -51,7 +51,19 @@ Fill this document during project initialization. Agents must verify commands ag
     event stream), `sse` (frame reading and the reconnecting watcher those two
     streams share), `errors`.
   - `src/output/` — `contract` (the `--json` shapes), `envelope`, `human`.
-  - `src/config.ts` — `ARTEL_API_BASE_URL` and `ARTEL_CONSOLE_BASE_URL`.
+  - `src/server/` — the stack supervisor behind `artel server` and the
+    `@project-artel/cli/supervisor` export (`src/supervisor.ts`) that the
+    desktop app imports. It never imports `commander` and never writes to
+    stdout; it reports through `onEvent`. `supervisor` (start order, crash
+    restarts, the lock), `proxy` (the Node reverse proxy that replaces Caddy),
+    `postgres`, `services` (the environment each service gets), `manifest`
+    (the runtime bundle's `manifest.json`), `install`, `doctor`, `home` (the
+    `__ARTEL_ORCHESTRATION_URL__` replacement), `local-stack` (the URL rule for
+    the CLI the desktop app ships).
+  - `src/commands/server/` — `install`, `start`, `stop`, `status`, `logs`,
+    `doctor`. They call `src/server/` and hand the result to `output`.
+  - `src/config.ts` — `ARTEL_API_BASE_URL` and `ARTEL_CONSOLE_BASE_URL`, and the
+    running local stack when `ARTEL_RUNTIME_DIR` is set.
 - Dependency direction: `cli` → `run` → `commands` → {`auth`, `game`,
   `credentials`, `http`} → `config`, with no edge back. `credentials` does not
   import `http`. `http/client` takes a token string; it never resolves a
@@ -70,8 +82,10 @@ Fill this document during project initialization. Agents must verify commands ag
     server issues. `artel doc upload` sends the file bytes straight there, so
     they never pass through the orchestration server.
   - a Unity player carrying the Artel SDK, launched as a child process
-- Persistent data: the signed-in user's credentials on the local machine. No
-  other state is kept between invocations.
+- Persistent data: the signed-in user's credentials on the local machine, and,
+  for `artel server`, the stack's data directory (`config.json` with its
+  secrets at `0600`, `state.json`, `pgdata/`, `storage/`, `home/`, `logs/`,
+  `runtime/<version>/`).
 
 ## Commands
 
