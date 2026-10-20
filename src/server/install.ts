@@ -9,7 +9,8 @@ import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
 import { SupervisorError } from './errors.js';
 import { loadRuntime, type RuntimeLayout } from './manifest.js';
-import { dataPaths, type RuntimeTarget } from './paths.js';
+import { isPidAlive } from './state-file.js';
+import { dataPaths, RUNTIME_VERSION, resolveRuntimeDir, type RuntimeTarget } from './paths.js';
 
 export const RUNTIME_RELEASE_BASE_URL =
   'https://github.com/project-artel/artel-desktop/releases/download';
@@ -92,6 +93,8 @@ export interface InstallOptions {
   baseUrl?: string;
   fetchImpl?: typeof fetch;
   onProgress?: (message: string) => void;
+  /** archive 를 받는 동안 받은 byte 수와 전체 크기. `Content-Length` 가 없으면 `total` 은 `null`. */
+  onDownloadProgress?: (received: number, total: number | null) => void;
 }
 
 export interface InstallResult {
@@ -119,6 +122,22 @@ async function fetchOk(fetchImpl: typeof fetch, url: string): Promise<Response> 
     );
   }
   return response;
+}
+
+/**
+ * Ctrl-C 나 SIGKILL 로 끝난 install 은 `finally` 를 지나지 않아 `.install-<pid>` 를 남긴다. 그 pid 가
+ * 더는 살아 있지 않으면 지운다. runtime 디렉터리 자체는 다 푼 뒤에 rename 하므로 남지 않는다.
+ */
+async function removeAbandonedWorkDirs(runtimeRoot: string): Promise<void> {
+  const entries = await fsp.readdir(runtimeRoot).catch(() => [] as string[]);
+  for (const name of entries) {
+    const match = /^\.install-(\d+)$/.exec(name);
+    if (match === null) continue;
+    const pid = Number.parseInt(match[1] ?? '', 10);
+    if (pid !== process.pid && !isPidAlive(pid)) {
+      await fsp.rm(path.join(runtimeRoot, name), { recursive: true, force: true });
+    }
+  }
 }
 
 /** archive 를 풀면 한 디렉터리가 나온다. 이름은 정해져 있지 않아 `manifest.json` 으로 찾는다. */
@@ -167,6 +186,7 @@ export async function installRuntime(options: InstallOptions): Promise<InstallRe
   const archiveName = runtimeArchiveName(options.version, options.target);
   const archiveUrl = runtimeArchiveUrl(options.version, options.target, options.baseUrl);
   const workDir = path.join(paths.runtimeRoot, `.install-${String(process.pid)}`);
+  await removeAbandonedWorkDirs(paths.runtimeRoot);
   await fsp.rm(workDir, { recursive: true, force: true });
   await fsp.mkdir(workDir, { recursive: true });
 
@@ -179,8 +199,15 @@ export async function installRuntime(options: InstallOptions): Promise<InstallRe
     const archiveResponse = await fetchOk(fetchImpl, archiveUrl);
     const archivePath = path.join(workDir, archiveName);
     const hash = crypto.createHash('sha256');
+    const lengthHeader = Number.parseInt(archiveResponse.headers.get('content-length') ?? '', 10);
+    const total = Number.isInteger(lengthHeader) && lengthHeader > 0 ? lengthHeader : null;
+    let received = 0;
     const body = Readable.fromWeb(archiveResponse.body as unknown as WebReadableStream<Uint8Array>);
-    body.on('data', (chunk: Buffer) => hash.update(chunk));
+    body.on('data', (chunk: Buffer) => {
+      hash.update(chunk);
+      received += chunk.length;
+      options.onDownloadProgress?.(received, total);
+    });
     await pipeline(body, fs.createWriteStream(archivePath));
     const actual = hash.digest('hex');
     if (actual !== expected) {
@@ -215,4 +242,58 @@ export async function installRuntime(options: InstallOptions): Promise<InstallRe
   } finally {
     await fsp.rm(workDir, { recursive: true, force: true });
   }
+}
+
+export interface EnsureRuntimeOptions {
+  dataDir: string;
+  env?: NodeJS.ProcessEnv;
+  /** `false` 면 없는 runtime 을 받지 않고 실패한다(`--no-install`). */
+  allowInstall: boolean;
+  target: RuntimeTarget;
+  baseUrl?: string;
+  fetchImpl?: typeof fetch;
+  onProgress?: (message: string) => void;
+  onDownloadProgress?: (received: number, total: number | null) => void;
+}
+
+export interface EnsureRuntimeResult {
+  runtimeDir: string;
+  /** 이번 호출이 runtime 을 받아 설치했으면 `true`. */
+  installed: boolean;
+}
+
+/**
+ * `artel server start` 가 supervisor 를 띄우기 전에 부른다. runtime 디렉터리가 기본 위치
+ * `<dataDir>/runtime/<RUNTIME_VERSION>` 이고 `manifest.json` 이 없을 때만 `installRuntime` 으로
+ * 받는다. `ARTEL_RUNTIME_DIR` 이 가리키는 runtime 은 desktop app 이 함께 넣은 것이라 받아서
+ * 바꾸지 않는다: 없으면 supervisor 가 `server_runtime_missing` 으로 실패한다.
+ */
+export async function ensureRuntime(options: EnsureRuntimeOptions): Promise<EnsureRuntimeResult> {
+  const env = options.env ?? process.env;
+  const runtimeDir = resolveRuntimeDir(options.dataDir, undefined, env);
+  const defaultDir = path.join(dataPaths(options.dataDir).runtimeRoot, RUNTIME_VERSION);
+  if (path.resolve(runtimeDir) !== path.resolve(defaultDir)) {
+    return { runtimeDir, installed: false };
+  }
+  if (fs.existsSync(path.join(runtimeDir, 'manifest.json'))) {
+    return { runtimeDir, installed: false };
+  }
+  if (!options.allowInstall) {
+    throw new SupervisorError(
+      'server_runtime_missing',
+      `No runtime bundle at ${runtimeDir}. Run "artel server install", or drop --no-install to download it as part of start.`,
+    );
+  }
+  const result = await installRuntime({
+    version: RUNTIME_VERSION,
+    target: options.target,
+    dataDir: options.dataDir,
+    ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+    ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
+    ...(options.onDownloadProgress === undefined
+      ? {}
+      : { onDownloadProgress: options.onDownloadProgress }),
+  });
+  return { runtimeDir: result.runtimeDir, installed: !result.alreadyInstalled };
 }

@@ -3,17 +3,19 @@ import type { ServerInstallPayload } from '../../output/contract.js';
 import { writeJsonPayload, type OutputSink } from '../../output/envelope.js';
 import { installRuntime } from '../../server/install.js';
 import { currentTarget, RUNTIME_VERSION } from '../../server/paths.js';
-import { commandDataDir, withSupervisorErrors } from './shared.js';
+import {
+  commandDataDir,
+  downloadProgressReporter,
+  withSupervisorErrors,
+  type ServerDownloadDeps,
+} from './shared.js';
 
 export interface ServerInstallOptions {
   json: boolean;
   version?: string | undefined;
 }
 
-export interface ServerInstallDeps {
-  fetchImpl?: typeof fetch;
-  baseUrl?: string;
-}
+export type ServerInstallDeps = ServerDownloadDeps;
 
 export async function runServerInstall(
   options: ServerInstallOptions,
@@ -29,6 +31,7 @@ export async function runServerInstall(
     );
   }
   const version = options.version?.trim() || RUNTIME_VERSION;
+  const progress = downloadProgressReporter(sink);
   const result = await withSupervisorErrors(() =>
     installRuntime({
       version,
@@ -36,9 +39,11 @@ export async function runServerInstall(
       dataDir: commandDataDir(env),
       ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
       ...(deps.baseUrl === undefined ? {} : { baseUrl: deps.baseUrl }),
-      onProgress: (message) => sink.err(message),
+      onProgress: progress.message,
+      // `--json` 이어도 stderr 의 진행 줄은 그대로 둔다. 이 명령은 원래 그렇게 동작했다.
+      onDownloadProgress: progress.bytes,
     }),
-  );
+  ).finally(() => progress.done());
 
   const payload: ServerInstallPayload = {
     version: result.version,

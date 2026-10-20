@@ -5,8 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { CliError } from '../../errors.js';
 import type { ServerStartPayload } from '../../output/contract.js';
 import { writeJsonPayload, type OutputSink } from '../../output/envelope.js';
+import { ensureRuntime } from '../../server/install.js';
 import { logFilePath, readLastLines } from '../../server/logs.js';
-import { dataPaths } from '../../server/paths.js';
+import { currentTarget, dataPaths } from '../../server/paths.js';
 import { isPidAlive, readState, SERVICE_NAMES } from '../../server/state-file.js';
 import {
   DEFAULT_TIMEOUTS,
@@ -15,11 +16,18 @@ import {
   type SupervisorEvent,
   type SupervisorOptions,
 } from '../../server/supervisor.js';
-import { commandDataDir, withSupervisorErrors } from './shared.js';
+import {
+  commandDataDir,
+  downloadProgressReporter,
+  withSupervisorErrors,
+  type ServerDownloadDeps,
+} from './shared.js';
 
 export interface ServerStartOptions {
   json: boolean;
   foreground: boolean;
+  /** `false` 면 runtime 이 없을 때 받지 않고 실패한다(`--no-install`). */
+  install: boolean;
   host?: string | undefined;
   port?: number | undefined;
   publicUrl?: string | undefined;
@@ -78,6 +86,7 @@ async function runForeground(
   sink: OutputSink,
   env: NodeJS.ProcessEnv,
   dataDir: string,
+  installed: boolean,
 ): Promise<void> {
   const stack = await withSupervisorErrors(() =>
     startStackWithInternals(
@@ -97,6 +106,7 @@ async function runForeground(
     attached: stack.attached,
     pid: status.pid ?? null,
     dataDir,
+    installed,
   });
   if (stack.attached) return;
 
@@ -120,7 +130,8 @@ function cliEntry(): string {
 }
 
 function detachedArgs(options: ServerStartOptions): string[] {
-  const args = [cliEntry(), 'server', 'start', '--foreground'];
+  // runtime 은 이 명령이 이미 받아 두었다. 분리한 supervisor 가 다시 받지 않게 한다.
+  const args = [cliEntry(), 'server', 'start', '--foreground', '--no-install'];
   if (options.host !== undefined) args.push('--host', options.host);
   if (options.port !== undefined) args.push('--port', String(options.port));
   if (options.publicUrl !== undefined) args.push('--public-url', options.publicUrl);
@@ -148,18 +159,8 @@ async function runDetached(
   sink: OutputSink,
   env: NodeJS.ProcessEnv,
   dataDir: string,
+  installed: boolean,
 ): Promise<void> {
-  const before = await stackStatus({ dataDir }, env);
-  if (before.running && before.url !== undefined) {
-    report(sink, options.json, {
-      url: before.url,
-      attached: true,
-      pid: before.pid ?? null,
-      dataDir,
-    });
-    return;
-  }
-
   const paths = dataPaths(dataDir);
   fs.mkdirSync(paths.logs, { recursive: true });
   const startLog = fs.openSync(`${paths.logs}/${START_LOG}`, 'w');
@@ -196,6 +197,7 @@ async function runDetached(
           attached: state.supervisorPid !== child.pid,
           pid: state.supervisorPid,
           dataDir,
+          installed,
         });
         return;
       }
@@ -214,15 +216,64 @@ async function runDetached(
   );
 }
 
+/**
+ * 기본 위치에 runtime 이 없으면 받는다. 분리한 supervisor 를 띄우기 전에 이 terminal 에서 받으므로
+ * 진행 상황이 보이고, 받기에 실패하면 아무 process 도 띄우지 않는다.
+ */
+async function installIfMissing(
+  options: ServerStartOptions,
+  sink: OutputSink,
+  env: NodeJS.ProcessEnv,
+  dataDir: string,
+  deps: ServerDownloadDeps,
+): Promise<boolean> {
+  const target = currentTarget();
+  // 지원하지 않는 기계는 supervisor 가 `server_unsupported_platform` 으로 거절한다.
+  if (target === null) return false;
+  const progress = options.json ? undefined : downloadProgressReporter(sink);
+  try {
+    const result = await withSupervisorErrors(() =>
+      ensureRuntime({
+        dataDir,
+        env,
+        allowInstall: options.install,
+        target,
+        ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
+        ...(deps.baseUrl === undefined ? {} : { baseUrl: deps.baseUrl }),
+        ...(progress === undefined
+          ? {}
+          : { onProgress: progress.message, onDownloadProgress: progress.bytes }),
+      }),
+    );
+    return result.installed;
+  } finally {
+    progress?.done();
+  }
+}
+
 export async function runServerStart(
   options: ServerStartOptions,
   sink: OutputSink,
   env: NodeJS.ProcessEnv = process.env,
+  deps: ServerDownloadDeps = {},
 ): Promise<void> {
   const dataDir = commandDataDir(env);
-  if (options.foreground) {
-    await runForeground(options, sink, env, dataDir);
+  const before = await stackStatus({ dataDir }, env);
+  if (before.running && before.url !== undefined) {
+    report(sink, options.json, {
+      url: before.url,
+      attached: true,
+      pid: before.pid ?? null,
+      dataDir,
+      installed: false,
+    });
     return;
   }
-  await runDetached(options, sink, env, dataDir);
+
+  const installed = await installIfMissing(options, sink, env, dataDir, deps);
+  if (options.foreground) {
+    await runForeground(options, sink, env, dataDir, installed);
+    return;
+  }
+  await runDetached(options, sink, env, dataDir, installed);
 }

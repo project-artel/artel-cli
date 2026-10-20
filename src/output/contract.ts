@@ -771,6 +771,11 @@ export interface ServerStartPayload {
   /** supervisor process 의 pid. 모르면 `null`. */
   pid: number | null;
   dataDir: string;
+  /**
+   * 이번 start 가 runtime bundle 을 받아 설치했으면 `true`. 기본 위치에 runtime 이 없을 때만
+   * 받는다. `ARTEL_RUNTIME_DIR` 을 쓰거나 이미 떠 있는 stack 에 붙었으면 언제나 `false` 다.
+   */
+  installed: boolean;
 }
 
 /** `artel server stop --json`. */

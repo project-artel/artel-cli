@@ -1773,12 +1773,16 @@ export async function runCli(
   server
     .command('start')
     .description(
-      'Start PostgreSQL, orchestration, agent-server and the proxy. Detaches unless --foreground is given',
+      'Start PostgreSQL, orchestration, agent-server and the proxy, downloading the runtime bundle first when it is missing. Detaches unless --foreground is given',
     )
     .option('--host <host>', 'address the proxy listens on', '127.0.0.1')
     .option('--port <port>', 'proxy port; defaults to the saved port, or 8088 on the first start')
     .option('--public-url <url>', 'URL people open; defaults to http://<host>:<port>')
     .option('--foreground', 'run in this terminal until Ctrl-C', false)
+    .option(
+      '--no-install',
+      'fail instead of downloading the runtime bundle when it is missing',
+    )
     .option('--json', 'emit the machine-readable result instead of human output', false)
     .action(
       async (options: {
@@ -1786,6 +1790,7 @@ export async function runCli(
         port?: string | undefined;
         publicUrl?: string | undefined;
         foreground: boolean;
+        install: boolean;
         json: boolean;
       }) => {
         json = options.json;
@@ -1793,6 +1798,7 @@ export async function runCli(
           {
             json: options.json,
             foreground: options.foreground,
+            install: options.install,
             host: options.host,
             port: options.port === undefined ? undefined : parsePositiveInt(options.port, '--port'),
             publicUrl: options.publicUrl,

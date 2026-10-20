@@ -62,6 +62,11 @@ Fill this document during project initialization. Agents must verify commands ag
     the CLI the desktop app ships).
   - `src/commands/server/` — `install`, `start`, `stop`, `status`, `logs`,
     `doctor`. They call `src/server/` and hand the result to `output`.
+    `start` calls `ensureRuntime` from `src/server/install.ts` first: when the
+    runtime resolves to `<dataDir>/runtime/<RUNTIME_VERSION>` and has no
+    `manifest.json`, it downloads it through the same `installRuntime` that
+    `install` uses, before any process is spawned (`--no-install` turns this
+    off). A runtime named by `ARTEL_RUNTIME_DIR` is never downloaded.
   - `src/config.ts` — `ARTEL_API_BASE_URL` and `ARTEL_CONSOLE_BASE_URL`, and the
     running local stack when `ARTEL_RUNTIME_DIR` is set.
 - Dependency direction: `cli` → `run` → `commands` → {`auth`, `game`,

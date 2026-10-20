@@ -65,7 +65,6 @@ artel qa diff <config> <config>                         # two configurations, co
 artel issue list --project <id>                         # what the runs found
 artel map show --project <id> --build <id>              # what the agent could read
 artel game logout --build ./Build/Game.exe --project <id>
-artel server install                                    # the runtime bundle for this machine
 artel server start                                      # the whole stack, no Docker
 ```
 
@@ -79,13 +78,21 @@ unknown value is `null`.
 agent server and the console — as native processes, with no Docker.
 
 ```
-artel server install          # download and verify the runtime bundle (once per version)
-artel server start            # detaches; prints the URL when every service is ready
+artel server start            # downloads the runtime bundle if missing, then detaches;
+                              # prints the URL when every service is ready
+artel server install          # download and verify the runtime bundle without starting
 artel server status           # URL, supervisor pid and the state of each service
 artel server logs orchestration --follow
 artel server doctor           # runtime, version, privileges, data directory, disk, ports
 artel server stop
 ```
+
+The first `start` downloads the runtime bundle for this machine (150 to 250 MB)
+from GitHub Releases, checks its SHA-256 and unpacks it, showing progress on
+stderr. A failed download leaves nothing half-unpacked and starts nothing.
+`--no-install` fails instead of downloading. When `ARTEL_RUNTIME_DIR` points at a
+runtime (the desktop app sets it), `start` uses that and never downloads.
+`start --json` reports `installed: true` when this start downloaded the runtime.
 
 The stack listens on `127.0.0.1:8088` by default (another free port when that one
 is taken). `--host 0.0.0.0 --public-url <url>` opens it to a network. On a fresh

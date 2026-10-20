@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -106,6 +106,19 @@ supported('artel server install', () => {
       runServerInstall({ json: true }, sink, linuxEnv(), { fetchImpl: fakeFetch('0'.repeat(64)) }),
     ).rejects.toMatchObject({ code: 'server_checksum_mismatch' });
     await expect(fs.access(path.join(xdg, 'artel', 'runtime', '0.1.0'))).rejects.toThrow();
+    expect(await fs.readdir(path.join(xdg, 'artel', 'runtime'))).toEqual([]);
+  });
+
+  it('removes the work directory an interrupted install left behind', async () => {
+    // 끝난 process 의 pid 로 `.install-<pid>` 를 만들어 Ctrl-C 로 끊긴 install 을 흉내 낸다.
+    const dead = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))']);
+    const abandoned = path.join(xdg, 'artel', 'runtime', `.install-${dead.stdout.toString()}`);
+    await fs.mkdir(path.join(abandoned, 'extract'), { recursive: true });
+
+    await runServerInstall({ json: true }, createMemorySink(), linuxEnv(), {
+      fetchImpl: fakeFetch(checksum),
+    });
+    expect(await fs.readdir(path.join(xdg, 'artel', 'runtime'))).toEqual(['0.1.0']);
   });
 });
 
@@ -170,12 +183,14 @@ describe.skipIf(process.platform !== 'linux')('artel server status, stop and doc
     expect(payload.checks.find((check) => check.name === 'version')?.status).toBe('ok');
   });
 
-  it('start in the foreground fails with a JSON error when no runtime is installed', async () => {
+  it('start --no-install fails with a JSON error when no runtime is installed', async () => {
     const sink = createMemorySink();
-    expect(await runCli(['server', 'start', '--foreground', '--json'], sink, linuxEnv())).toBe(
-      EXIT_FAILURE,
-    );
-    expect(sink.lastJson<ErrorEnvelope>().error.code).toBe('server_runtime_missing');
+    expect(
+      await runCli(['server', 'start', '--foreground', '--no-install', '--json'], sink, linuxEnv()),
+    ).toBe(EXIT_FAILURE);
+    const error = sink.lastJson<ErrorEnvelope>().error;
+    expect(error.code).toBe('server_runtime_missing');
+    expect(error.message).toContain('Run "artel server install", or drop --no-install');
   });
 
   it('rejects an unknown log service', async () => {
