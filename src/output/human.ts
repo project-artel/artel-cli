@@ -88,7 +88,9 @@ function describeApiBaseUrl(payload: StatusPayload): string {
       ? 'ARTEL_API_BASE_URL'
       : payload.apiBaseUrlSource === 'default'
         ? 'built-in default'
-        : 'credentials file';
+        : payload.apiBaseUrlSource === 'local-stack'
+          ? 'the running local stack'
+          : 'credentials file';
   return `  api base url      ${payload.apiBaseUrl} (from ${origin})`;
 }
 
