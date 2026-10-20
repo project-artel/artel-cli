@@ -7,6 +7,13 @@
   "bin": {
     "artel": "./dist/cli.js"
   },
+  "exports": {
+    "./supervisor": {
+      "types": "./dist/supervisor.d.ts",
+      "default": "./dist/supervisor.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist"
   ],
