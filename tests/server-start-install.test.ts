@@ -122,7 +122,14 @@ supported('artel server start with a missing runtime', () => {
 
     expect(sink.stdout).toHaveLength(1);
     const payload = sink.lastJson<ServerStartPayload>();
-    expect(Object.keys(payload).sort()).toEqual(['attached', 'dataDir', 'installed', 'pid', 'url']);
+    expect(Object.keys(payload).sort()).toEqual([
+      'attached',
+      'dataDir',
+      'installed',
+      'pid',
+      'url',
+      'warnings',
+    ]);
     expect(payload).toMatchObject({ attached: false, installed: true, pid: process.pid });
     expect(sink.stderr.some((line) => line.includes('%'))).toBe(false);
   }, 30_000);

@@ -43,7 +43,10 @@ export function orchestrationCommand(context: ServiceContext): ServiceCommand {
       ARTEL_ALLOWED_ORIGINS: publicUrl,
       ARTEL_JWT_SECRET: config.jwtSecret,
       ARTEL_SECRETS_KEY: config.secretsKey,
-      ARTEL_SECURE_COOKIE: 'false',
+      // 공개 주소가 https 이면 TLS 를 이 proxy 가 끝내든 앞의 tunnel 이 끝내든 cookie 는 Secure 여야 한다.
+      ARTEL_SECURE_COOKIE: publicUrl.startsWith('https://') ? 'true' : 'false',
+      // orchestration 이 agent-server 에 넘길 URL 을 서명할 때 쓰는 자기 주소. 공개 주소가 아니다.
+      ARTEL_INTERNAL_BASE_URL: `http://127.0.0.1:${String(ports.orchestration)}`,
       ARTEL_SIGNUP_OPEN: 'false',
       ARTEL_GITHUB_SIGNUP_OPEN: 'false',
       LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB: 'INFO',

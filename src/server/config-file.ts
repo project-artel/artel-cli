@@ -16,6 +16,11 @@ export interface StackPorts {
   agentServer: number;
 }
 
+export interface StackTls {
+  certFile: string;
+  keyFile: string;
+}
+
 /** `config.json`. secret 이 들어 있어 mode 0600 으로만 쓴다. */
 export interface StackConfig {
   schemaVersion: 1;
@@ -23,6 +28,12 @@ export interface StackConfig {
   secretsKey: string;
   dbPassword: string;
   ports: StackPorts;
+  /** 사용자가 고른 listen host. 없으면 `127.0.0.1`. */
+  host?: string;
+  /** 사용자가 고른 공개 URL. 없으면 host, port, tls 로 만든다. */
+  publicUrl?: string;
+  /** TLS 인증서 파일 경로. 파일 내용은 저장하지 않고 start 마다 다시 읽는다. */
+  tls?: StackTls;
 }
 
 const PORT_KEYS: readonly (keyof StackPorts)[] = [
@@ -84,13 +95,25 @@ export async function readStackConfig(configFile: string): Promise<StackConfig |
   ) {
     return null;
   }
-  return {
+  const config: StackConfig = {
     schemaVersion: 1,
     jwtSecret: record.jwtSecret,
     secretsKey: record.secretsKey,
     dbPassword: record.dbPassword,
     ports,
   };
+  if (typeof record.host === 'string' && record.host.length > 0) config.host = record.host;
+  if (typeof record.publicUrl === 'string' && record.publicUrl.length > 0) {
+    config.publicUrl = record.publicUrl;
+  }
+  const tls = record.tls;
+  if (typeof tls === 'object' && tls !== null) {
+    const { certFile, keyFile } = tls as Record<string, unknown>;
+    if (typeof certFile === 'string' && typeof keyFile === 'string') {
+      config.tls = { certFile, keyFile };
+    }
+  }
+  return config;
 }
 
 /**
@@ -109,6 +132,8 @@ export interface PortRequest {
   proxyPort?: number | undefined;
   /** proxy 가 listen 할 host. 다른 service 는 언제나 `127.0.0.1` 이다. */
   host: string;
+  /** `config.json` 에 남길 네트워크 설정. 키가 없으면 저장하지 않는다. */
+  network?: Pick<StackConfig, 'host' | 'publicUrl' | 'tls'>;
 }
 
 /**
@@ -149,6 +174,23 @@ export async function resolvePorts(
   };
 }
 
+/** `host`, `publicUrl`, `tls` 를 `network` 의 값으로 바꾼다. `network` 에 없는 키는 지운다. */
+export function withNetwork(
+  config: StackConfig,
+  network: Pick<StackConfig, 'host' | 'publicUrl' | 'tls'>,
+): StackConfig {
+  const rest: StackConfig = { ...config };
+  delete rest.host;
+  delete rest.publicUrl;
+  delete rest.tls;
+  return {
+    ...rest,
+    ...(network.host === undefined ? {} : { host: network.host }),
+    ...(network.publicUrl === undefined ? {} : { publicUrl: network.publicUrl }),
+    ...(network.tls === undefined ? {} : { tls: network.tls }),
+  };
+}
+
 /** 첫 start 에 secret 을 만들고, 이후에는 저장된 secret 을 그대로 쓰며 port 만 다시 확인한다. */
 export async function loadOrCreateStackConfig(
   configFile: string,
@@ -156,9 +198,10 @@ export async function loadOrCreateStackConfig(
 ): Promise<StackConfig> {
   const saved = await readStackConfig(configFile);
   const ports = await resolvePorts(saved?.ports ?? null, request);
-  const config: StackConfig = saved
+  const base: StackConfig = saved
     ? { ...saved, ports }
     : { schemaVersion: 1, ...generateSecrets(), ports };
+  const config = request.network === undefined ? base : withNetwork(base, request.network);
   await writePrivateJson(configFile, config);
   return config;
 }

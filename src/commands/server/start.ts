@@ -5,9 +5,15 @@ import { fileURLToPath } from 'node:url';
 import { CliError } from '../../errors.js';
 import type { ServerStartPayload } from '../../output/contract.js';
 import { writeJsonPayload, type OutputSink } from '../../output/envelope.js';
+import { readStackConfig } from '../../server/config-file.js';
 import { ensureRuntime } from '../../server/install.js';
 import { logFilePath, readLastLines } from '../../server/logs.js';
 import { currentTarget, dataPaths } from '../../server/paths.js';
+import {
+  effectiveSettings,
+  plainTextWarning,
+  validateSettings,
+} from '../../server/stack-settings.js';
 import { isPidAlive, readState, SERVICE_NAMES } from '../../server/state-file.js';
 import {
   DEFAULT_TIMEOUTS,
@@ -31,6 +37,8 @@ export interface ServerStartOptions {
   host?: string | undefined;
   port?: number | undefined;
   publicUrl?: string | undefined;
+  tlsCert?: string | undefined;
+  tlsKey?: string | undefined;
 }
 
 /** 분리해 띄운 supervisor 가 준비될 때까지 기다리는 상한. 각 service 의 준비 상한을 더한 값이다. */
@@ -60,7 +68,28 @@ function supervisorOptions(options: ServerStartOptions, dataDir: string): Superv
     ...(options.host === undefined ? {} : { host: options.host }),
     ...(options.port === undefined ? {} : { port: options.port }),
     ...(options.publicUrl === undefined ? {} : { publicUrl: options.publicUrl }),
+    ...(options.tlsCert === undefined || options.tlsKey === undefined
+      ? {}
+      : { tls: { certFile: options.tlsCert, keyFile: options.tlsKey } }),
   };
+}
+
+/**
+ * 분리하기 전에 이 terminal 에서 설정을 검증한다. 잘못된 TLS 파일이나 공개 주소가 start.log 속
+ * 실패가 아니라 명령의 오류로 나온다. 돌려주는 값은 사용자에게 보일 경고다.
+ */
+async function checkSettings(options: ServerStartOptions, dataDir: string): Promise<string[]> {
+  if ((options.tlsCert === undefined) !== (options.tlsKey === undefined)) {
+    throw new CliError(
+      'server_settings_invalid',
+      '--tls-cert and --tls-key go together: give both files or neither.',
+    );
+  }
+  const saved = await readStackConfig(dataPaths(dataDir).configFile);
+  const settings = effectiveSettings(saved, supervisorOptions(options, dataDir));
+  await withSupervisorErrors(() => validateSettings(settings));
+  const warning = plainTextWarning(settings);
+  return warning === null ? [] : [warning];
 }
 
 function report(sink: OutputSink, json: boolean, payload: ServerStartPayload): void {
@@ -73,6 +102,7 @@ function report(sink: OutputSink, json: boolean, payload: ServerStartPayload): v
       ? `ARTEL is already running at ${payload.url}`
       : `ARTEL is running at ${payload.url}`,
   );
+  for (const warning of payload.warnings) sink.err(`warning: ${warning}`);
   if (!payload.attached) sink.out(FIRST_SIGNUP_HINT);
   sink.out('Stop it with "artel server stop".');
 }
@@ -87,6 +117,7 @@ async function runForeground(
   env: NodeJS.ProcessEnv,
   dataDir: string,
   installed: boolean,
+  warnings: string[],
 ): Promise<void> {
   const stack = await withSupervisorErrors(() =>
     startStackWithInternals(
@@ -107,6 +138,7 @@ async function runForeground(
     pid: status.pid ?? null,
     dataDir,
     installed,
+    warnings: stack.attached ? [] : warnings,
   });
   if (stack.attached) return;
 
@@ -135,6 +167,8 @@ function detachedArgs(options: ServerStartOptions): string[] {
   if (options.host !== undefined) args.push('--host', options.host);
   if (options.port !== undefined) args.push('--port', String(options.port));
   if (options.publicUrl !== undefined) args.push('--public-url', options.publicUrl);
+  if (options.tlsCert !== undefined) args.push('--tls-cert', options.tlsCert);
+  if (options.tlsKey !== undefined) args.push('--tls-key', options.tlsKey);
   return args;
 }
 
@@ -160,6 +194,7 @@ async function runDetached(
   env: NodeJS.ProcessEnv,
   dataDir: string,
   installed: boolean,
+  warnings: string[],
 ): Promise<void> {
   const paths = dataPaths(dataDir);
   fs.mkdirSync(paths.logs, { recursive: true });
@@ -198,6 +233,7 @@ async function runDetached(
           pid: state.supervisorPid,
           dataDir,
           installed,
+          warnings: state.supervisorPid !== child.pid ? [] : warnings,
         });
         return;
       }
@@ -266,14 +302,16 @@ export async function runServerStart(
       pid: before.pid ?? null,
       dataDir,
       installed: false,
+      warnings: [],
     });
     return;
   }
 
+  const warnings = await checkSettings(options, dataDir);
   const installed = await installIfMissing(options, sink, env, dataDir, deps);
   if (options.foreground) {
-    await runForeground(options, sink, env, dataDir, installed);
+    await runForeground(options, sink, env, dataDir, installed, warnings);
     return;
   }
-  await runDetached(options, sink, env, dataDir, installed);
+  await runDetached(options, sink, env, dataDir, installed, warnings);
 }
