@@ -68,14 +68,32 @@ export function runToCompletion(
         options.onLine?.(line);
       },
     });
+    let settled = false;
+    const finish = (result: RunResult): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
     child.once('error', (error) => {
-      resolve({ code: null, output: `${lines.join('\n')}\n${error.message}`.trim() });
+      finish({ code: null, output: `${lines.join('\n')}\n${error.message}`.trim() });
     });
     child.once('close', (code) => {
-      resolve({ code, output: lines.join('\n') });
+      finish({ code, output: lines.join('\n') });
+    });
+    // Windows 의 `pg_ctl start` 는 끝나도 `close` 가 오지 않는다. 띄운 postgres 가 stdout pipe 를
+    // 물려받아 계속 열어 두기 때문이다. 그래서 `exit` 뒤 남은 출력을 잠깐 받고 pipe 를 닫는다.
+    child.once('exit', (code) => {
+      setTimeout(() => {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        finish({ code, output: lines.join('\n') });
+      }, EXIT_OUTPUT_GRACE_MS).unref();
     });
   });
 }
+
+/** `exit` 뒤 `close` 를 기다리는 시간. 그 안에 오지 않으면 남은 출력은 버린다. */
+const EXIT_OUTPUT_GRACE_MS = 500;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
