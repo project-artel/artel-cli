@@ -1,5 +1,7 @@
 import type { ApiBaseUrlSource } from '../config.js';
 import type { ErrorCode } from '../errors.js';
+import type { DoctorCheck } from '../server/doctor.js';
+import type { ServiceName, ServiceState } from '../server/state-file.js';
 
 /**
  * `--json` 출력의 모양. 첫 릴리스부터 공개 계약이다.
@@ -748,4 +750,49 @@ export interface ContentMapScanPayload {
   ingestedDocuments: number | null;
   error: string | null;
   watched: boolean;
+}
+
+/** `artel server install --json`. */
+export interface ServerInstallPayload {
+  version: string;
+  target: string;
+  runtimeDir: string;
+  /** 같은 버전이 이미 온전히 풀려 있어 아무것도 받지 않았으면 `true`. */
+  alreadyInstalled: boolean;
+  /** 받은 archive 의 SHA-256. 받지 않았으면 `null`. */
+  sha256: string | null;
+}
+
+/** `artel server start --json`. */
+export interface ServerStartPayload {
+  url: string;
+  /** 이미 떠 있던 stack 에 붙었으면 `true`. 이때는 아무것도 새로 띄우지 않았다. */
+  attached: boolean;
+  /** supervisor process 의 pid. 모르면 `null`. */
+  pid: number | null;
+  dataDir: string;
+}
+
+/** `artel server stop --json`. */
+export interface ServerStopPayload {
+  wasRunning: boolean;
+  dataDir: string;
+}
+
+/** `artel server status --json`. */
+export interface ServerStatusPayload {
+  running: boolean;
+  url: string | null;
+  pid: number | null;
+  services: Record<ServiceName, ServiceState>;
+  dataDir: string;
+  logDir: string;
+}
+
+/** `artel server doctor --json`. `ok` 는 `fail` 인 검사가 하나도 없다는 뜻이다. */
+export interface ServerDoctorPayload {
+  ok: boolean;
+  dataDir: string;
+  runtimeDir: string;
+  checks: DoctorCheck[];
 }

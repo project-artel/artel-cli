@@ -30,6 +30,11 @@ import type {
   ScenarioDeletePayload,
   ScenarioListPayload,
   ScenarioPayload,
+  ServerDoctorPayload,
+  ServerInstallPayload,
+  ServerStartPayload,
+  ServerStatusPayload,
+  ServerStopPayload,
   StatusPayload,
   TestCaseDetailPayload,
   TestCasePayload,
@@ -75,7 +80,12 @@ export type CommandPayload =
   | QaListPayload
   | QaLabelsPayload
   | QaModelsPayload
-  | GameInstanceListPayload;
+  | GameInstanceListPayload
+  | ServerInstallPayload
+  | ServerStartPayload
+  | ServerStopPayload
+  | ServerStatusPayload
+  | ServerDoctorPayload;
 
 /**
  * 출력 두 갈래를 한 곳으로 모은다. 테스트가 실제 stdout 을 건드리지 않고 무엇이 찍혔는지

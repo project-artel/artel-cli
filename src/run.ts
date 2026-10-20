@@ -50,6 +50,13 @@ import {
   parseLabel,
   requireAxisValue,
 } from './qa/axes.js';
+import { runServerDoctor } from './commands/server/doctor.js';
+import { runServerInstall } from './commands/server/install.js';
+import { runServerLogs } from './commands/server/logs.js';
+import { runServerStart } from './commands/server/start.js';
+import { runServerStatus } from './commands/server/status.js';
+import { runServerStop } from './commands/server/stop.js';
+import { RUNTIME_VERSION } from './server/paths.js';
 import { runScenarioApprove } from './commands/scenario/approve.js';
 import { runScenarioCreate } from './commands/scenario/create.js';
 import { runScenarioDelete } from './commands/scenario/delete.js';
@@ -1746,6 +1753,102 @@ export async function runCli(
         );
       },
     );
+
+  const server = program
+    .command('server')
+    .description(
+      'Run the whole ARTEL stack on this machine as native processes, from a downloaded runtime bundle',
+    );
+
+  server
+    .command('install')
+    .description('Download the runtime bundle for this machine, check its SHA-256, and unpack it')
+    .option('--version <version>', 'runtime version to install', RUNTIME_VERSION)
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .action(async (options: { version: string; json: boolean }) => {
+      json = options.json;
+      await runServerInstall(options, sink, env);
+    });
+
+  server
+    .command('start')
+    .description(
+      'Start PostgreSQL, orchestration, agent-server and the proxy. Detaches unless --foreground is given',
+    )
+    .option('--host <host>', 'address the proxy listens on', '127.0.0.1')
+    .option('--port <port>', 'proxy port; defaults to the saved port, or 8088 on the first start')
+    .option('--public-url <url>', 'URL people open; defaults to http://<host>:<port>')
+    .option('--foreground', 'run in this terminal until Ctrl-C', false)
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .action(
+      async (options: {
+        host: string;
+        port?: string | undefined;
+        publicUrl?: string | undefined;
+        foreground: boolean;
+        json: boolean;
+      }) => {
+        json = options.json;
+        await runServerStart(
+          {
+            json: options.json,
+            foreground: options.foreground,
+            host: options.host,
+            port: options.port === undefined ? undefined : parsePositiveInt(options.port, '--port'),
+            publicUrl: options.publicUrl,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  server
+    .command('stop')
+    .description('Stop the stack in reverse order: proxy, agent-server, orchestration, PostgreSQL')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .action(async (options: { json: boolean }) => {
+      json = options.json;
+      await runServerStop(options, sink, env);
+    });
+
+  server
+    .command('status')
+    .description('Report whether the stack is running, its URL, and the state of each service')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .action(async (options: { json: boolean }) => {
+      json = options.json;
+      await runServerStatus(options, sink, env);
+    });
+
+  server
+    .command('logs')
+    .description('Print the last lines of a service log, or of every log when no service is given')
+    .argument('[service]', 'supervisor, postgres, orchestration, agent-server or proxy')
+    .option('--follow', 'keep printing new lines until Ctrl-C', false)
+    .option('--lines <n>', 'lines to print from the end of each log', '100')
+    .action(async (service: string | undefined, options: { follow: boolean; lines: string }) => {
+      await runServerLogs(
+        {
+          service,
+          follow: options.follow,
+          lines: parsePositiveInt(options.lines, '--lines'),
+        },
+        sink,
+        env,
+      );
+    });
+
+  server
+    .command('doctor')
+    .description(
+      'Check the runtime bundle and its manifest, the version, privileges, the data directory, disk space and ports',
+    )
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .action(async (options: { json: boolean }) => {
+      json = options.json;
+      exitCode = await runServerDoctor(options, sink, env);
+    });
 
   /** `--set` 의 원문을 콤마로 가른다. 빈 문자열 항목은 실수(연달아 찍은 콤마 등)로 보고 버린다. */
   function parseScenarioIds(raw: string | undefined): readonly string[] | undefined {
