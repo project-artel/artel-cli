@@ -57,16 +57,26 @@ Fill this document during project initialization. Agents must verify commands ag
     stdout; it reports through `onEvent`. `supervisor` (start order, crash
     restarts, the lock), `proxy` (the Node reverse proxy that replaces Caddy),
     `postgres`, `services` (the environment each service gets), `manifest`
-    (the runtime bundle's `manifest.json`), `install`, `doctor`, `home` (the
+    (the runtime bundle's `manifest.json`), `install`, `doctor`, `stack-settings`
+    (the host, port, public URL and TLS files in `config.json`, their
+    validation, and `readStackSettings` / `writeStackSettings`, which
+    `src/supervisor.ts` exports), `home` (the
     `__ARTEL_ORCHESTRATION_URL__` replacement), `local-stack` (the URL rule for
     the CLI the desktop app ships).
   - `src/commands/server/` — `install`, `start`, `stop`, `status`, `logs`,
-    `doctor`. They call `src/server/` and hand the result to `output`.
+    `doctor`, `config` (show, and `config set`). They call `src/server/` and hand the result to `output`.
     `start` calls `ensureRuntime` from `src/server/install.ts` first: when the
     runtime resolves to `<dataDir>/runtime/<RUNTIME_VERSION>` and has no
     `manifest.json`, it downloads it through the same `installRuntime` that
     `install` uses, before any process is spawned (`--no-install` turns this
     off). A runtime named by `ARTEL_RUNTIME_DIR` is never downloaded.
+  - With `tls` set the proxy listens through `https.createServer` and the
+    certificate files are read again on every start. `state.json` then holds
+    `tlsFingerprint`: `stopStack` from another process connects to the loopback
+    address over TLS without CA verification and sends the control token only
+    after the peer certificate's SHA-256 fingerprint equals that value
+    (`pinnedHttpsRequest` in `http-probe.ts`). It does not use a second plain
+    listener, which would put the token on an unencrypted socket.
   - `src/config.ts` — `ARTEL_API_BASE_URL` and `ARTEL_CONSOLE_BASE_URL`, and the
     running local stack when `ARTEL_RUNTIME_DIR` is set.
 - Dependency direction: `cli` → `run` → `commands` → {`auth`, `game`,
