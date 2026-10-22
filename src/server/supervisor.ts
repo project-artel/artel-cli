@@ -3,10 +3,21 @@ import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { loadOrCreateStackConfig, readStackConfig, type StackConfig } from './config-file.js';
+import {
+  loadOrCreateStackConfig,
+  readStackConfig,
+  type StackConfig,
+  type StackTls,
+} from './config-file.js';
 import { SupervisorError } from './errors.js';
 import { prepareHome } from './home.js';
-import { connectableHost, postEmpty, probeJson, probeStatus } from './http-probe.js';
+import {
+  connectableHost,
+  pinnedHttpsRequest,
+  postEmpty,
+  probeJson,
+  probeStatus,
+} from './http-probe.js';
 import {
   followFile,
   logFilePath,
@@ -43,6 +54,13 @@ import {
   startProxy,
   type RunningProxy,
 } from './proxy.js';
+import {
+  effectiveSettings,
+  plainTextWarning,
+  validateSettings,
+  type StackSettings,
+  type TlsMaterial,
+} from './stack-settings.js';
 import { agentServerCommand, orchestrationCommand, type ServiceCommand } from './services.js';
 import {
   emptyServiceStates,
@@ -63,19 +81,26 @@ export interface SupervisorOptions {
   runtimeDir?: string;
   /** 기본값은 `defaultDataDir()`. */
   dataDir?: string;
-  /** proxy 가 listen 할 host. 기본값 `127.0.0.1`. */
+  /**
+   * proxy 가 listen 할 host. 명시한 값, `config.json`, 기본값 `127.0.0.1` 의 순서로 정한다.
+   * 명시한 값은 `config.json` 에 저장된다. `port`, `publicUrl`, `tls` 도 같다.
+   */
   host?: string;
-  /** proxy port. 기본값은 `config.json` 에 저장된 값이고, 첫 start 는 8088 을 먼저 시도한다. */
+  /** proxy port. 첫 start 는 8088 을 먼저 시도한다. */
   port?: number;
-  /** 기본값 `http://<host>:<port>`. */
+  /** 기본값 `http(s)://127.0.0.1:<port>`. `tls` 가 있으면 https 여야 한다. */
   publicUrl?: string;
+  /** 인증서와 key 파일. 주면 proxy 가 HTTPS 로 listen 한다. `null` 은 저장된 TLS 를 끈다. */
+  tls?: StackTls | null;
   onEvent?: (event: SupervisorEvent) => void;
 }
 
 export type SupervisorEvent =
   | { type: 'service'; service: ServiceName; state: ServiceState; detail?: string }
   | { type: 'log'; service: ServiceName; line: string }
-  | { type: 'ready'; url: string };
+  | { type: 'ready'; url: string }
+  /** start 는 계속된다. 사용자가 알아야 할 위험이 있을 때 한 번 낸다. */
+  | { type: 'warning'; code: 'plain_text_exposure'; message: string };
 
 export interface RunningStack {
   url: string;
@@ -156,21 +181,49 @@ export function logDir(options: Pick<SupervisorOptions, 'dataDir'> = {}): string
   return dataPaths(resolveDataDir(options.dataDir, process.env)).logs;
 }
 
-function defaultPublicUrl(host: string, port: number): string {
-  return `http://${connectableHost(host)}:${String(port)}`;
+function controlUrl(
+  state: Pick<StackState, 'host' | 'proxyPort' | 'tlsFingerprint'>,
+  suffix: string,
+): string {
+  const scheme = state.tlsFingerprint ? 'https' : 'http';
+  return `${scheme}://${connectableHost(state.host)}:${String(state.proxyPort)}${suffix}`;
 }
 
-function normalizeUrl(url: string): string {
-  return url.replace(/\/+$/, '');
+/** control 경로에 GET 한 JSON. 연결이 안 되거나 지문이 다르면 `null`. */
+async function controlJson(state: StackState): Promise<unknown> {
+  if (!state.tlsFingerprint) return probeJson(controlUrl(state, CONTROL_PATH));
+  const response = await pinnedHttpsRequest(
+    { host: connectableHost(state.host), port: state.proxyPort },
+    { method: 'GET', path: CONTROL_PATH, fingerprint: state.tlsFingerprint },
+  );
+  if (response?.status !== 200) return null;
+  try {
+    return JSON.parse(response.body) as unknown;
+  } catch {
+    return null;
+  }
 }
 
-function controlUrl(state: Pick<StackState, 'host' | 'proxyPort'>, suffix: string): string {
-  return `http://${connectableHost(state.host)}:${String(state.proxyPort)}${suffix}`;
+/** control 경로에 token 을 실어 POST 한 status. 연결이 안 되거나 지문이 다르면 `null`. */
+async function controlStop(state: StackState): Promise<number | null> {
+  const headers = { [CONTROL_TOKEN_HEADER]: state.controlToken };
+  if (!state.tlsFingerprint) return postEmpty(controlUrl(state, CONTROL_STOP_PATH), headers);
+  const response = await pinnedHttpsRequest(
+    { host: connectableHost(state.host), port: state.proxyPort },
+    {
+      method: 'POST',
+      path: CONTROL_STOP_PATH,
+      headers,
+      fingerprint: state.tlsFingerprint,
+      timeoutMs: 5_000,
+    },
+  );
+  return response?.status ?? null;
 }
 
 /** state 가 가리키는 supervisor 의 proxy 가 답하고, 답한 pid 가 state 의 pid 와 같은가. */
 async function proxyAnswers(state: StackState): Promise<boolean> {
-  const body = await probeJson(controlUrl(state, CONTROL_PATH));
+  const body = await controlJson(state);
   return (
     typeof body === 'object' &&
     body !== null &&
@@ -287,8 +340,11 @@ class Supervisor {
     });
   }
 
+  private settings: StackSettings = effectiveSettings(null);
+  private tlsMaterial: TlsMaterial | null = null;
+
   private get host(): string {
-    return this.options.host?.trim() || '127.0.0.1';
+    return this.settings.host;
   }
 
   private log(name: LogFileName): RotatingLog {
@@ -336,6 +392,7 @@ class Supervisor {
       url: this.url,
       host: this.host,
       proxyPort: this.config?.ports.proxy ?? 0,
+      tlsFingerprint: this.tlsMaterial?.fingerprint ?? null,
       runtimeDir: this.runtime?.runtimeDir ?? '',
       runtimeVersion: this.runtime?.manifest.version ?? '',
       startedAt: this.startedAt,
@@ -377,13 +434,37 @@ class Supervisor {
         `${this.paths.configFile} is missing or unreadable, but ${this.paths.pgdata} already holds a database. The database password and secrets live only in that file, so the stack cannot start. Restore the file, or move ${this.paths.pgdata} away to start over with an empty database.`,
       );
     }
+    const explicit = {
+      host: this.options.host,
+      port: this.options.port,
+      publicUrl: this.options.publicUrl,
+      tls: this.options.tls,
+    };
+    // 인증서는 start 마다 다시 읽는다. 갱신한 파일은 다음 start 부터 쓰이고, 떠 있는 동안은 바꾸지 않는다.
+    const requested = effectiveSettings(savedConfig, explicit);
+    this.tlsMaterial = await validateSettings(requested);
+    // host 와 publicUrl 은 사용자가 정했을 때만 저장해, port 나 TLS 를 바꾸면 기본값이 따라 바뀌게 한다.
+    const keptHost = this.options.host?.trim() ? requested.host : savedConfig?.host;
+    const keptPublicUrl = this.options.publicUrl?.trim()
+      ? requested.publicUrl
+      : savedConfig?.publicUrl;
     this.config = await loadOrCreateStackConfig(this.paths.configFile, {
       proxyPort: this.options.port,
-      host: this.host,
+      host: requested.host,
+      network: {
+        ...(keptHost === undefined ? {} : { host: keptHost }),
+        ...(keptPublicUrl === undefined ? {} : { publicUrl: keptPublicUrl }),
+        ...(requested.tls === null ? {} : { tls: requested.tls }),
+      },
     });
-    this.url = normalizeUrl(
-      this.options.publicUrl?.trim() || defaultPublicUrl(this.host, this.config.ports.proxy),
-    );
+    // 저장된 port 가 쓰이고 있어 다른 port 로 옮겼을 수 있다. 기본 publicUrl 은 실제 port 를 따른다.
+    this.settings = effectiveSettings(this.config);
+    this.url = this.settings.publicUrl;
+    const warning = plainTextWarning(this.settings);
+    if (warning !== null) {
+      this.supervisorLine(`warning: ${warning}`);
+      this.emit({ type: 'warning', code: 'plain_text_exposure', message: warning });
+    }
     this.supervisorLine(`starting ${this.url} with runtime ${runtimeDir}`);
 
     await prepareHome({
@@ -505,6 +586,9 @@ class Supervisor {
         port: this.config.ports.proxy,
         orchestrationPort: this.config.ports.orchestration,
         homeDir: this.paths.home,
+        ...(this.tlsMaterial === null
+          ? {}
+          : { tls: { cert: this.tlsMaterial.cert, key: this.tlsMaterial.key } }),
         control: {
           pid: process.pid,
           token: this.controlToken,
@@ -777,9 +861,7 @@ export async function stopStackWithInternals(
   if (state === null) return;
   const pid = state.supervisorPid;
   if (isPidAlive(pid)) {
-    const status = await postEmpty(controlUrl(state, CONTROL_STOP_PATH), {
-      [CONTROL_TOKEN_HEADER]: state.controlToken,
-    });
+    const status = await controlStop(state);
     if (status !== 202 && process.platform !== 'win32') {
       try {
         process.kill(pid, 'SIGTERM');

@@ -23,6 +23,11 @@ export interface StackState {
   runtimeVersion: string;
   startedAt: string;
   controlToken: string;
+  /**
+   * proxy 가 직접 HTTPS 를 끝낼 때 인증서의 SHA-256 지문. 있으면 control 요청은 HTTPS 로 가고, 이
+   * 지문과 같은 인증서를 낸 상대에게만 token 을 보낸다.
+   */
+  tlsFingerprint?: string | null;
   /** 각 service 의 pid. postgres 는 postmaster 의 pid 이고 proxy 는 supervisor 자신이다. */
   pids: Record<ServiceName, number | null>;
   services: Record<ServiceName, ServiceState>;

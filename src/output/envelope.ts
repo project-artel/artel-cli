@@ -30,6 +30,7 @@ import type {
   ScenarioDeletePayload,
   ScenarioListPayload,
   ScenarioPayload,
+  ServerConfigPayload,
   ServerDoctorPayload,
   ServerInstallPayload,
   ServerStartPayload,
@@ -81,6 +82,7 @@ export type CommandPayload =
   | QaLabelsPayload
   | QaModelsPayload
   | GameInstanceListPayload
+  | ServerConfigPayload
   | ServerInstallPayload
   | ServerStartPayload
   | ServerStopPayload

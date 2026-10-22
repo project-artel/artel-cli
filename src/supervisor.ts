@@ -16,4 +16,10 @@ export {
   type SupervisorEvent,
   type SupervisorOptions,
 } from './server/supervisor.js';
+export {
+  readStackSettings,
+  writeStackSettings,
+  type StackSettings,
+  type StackTls,
+} from './server/stack-settings.js';
 export { defaultDataDir } from './server/paths.js';

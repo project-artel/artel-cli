@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
+import https from 'node:https';
 import net from 'node:net';
 import path from 'node:path';
 import type { Duplex } from 'node:stream';
@@ -80,6 +81,8 @@ export interface ProxyOptions {
   homeDir: string;
   control?: ProxyControl;
   onError?: (message: string) => void;
+  /** 주면 HTTPS 로 listen 한다. 인증서는 호출한 쪽이 start 때 읽어 넘긴다. */
+  tls?: { cert: Buffer; key: Buffer };
 }
 
 export interface RunningProxy {
@@ -106,7 +109,9 @@ function forwardedHeaders(req: http.IncomingMessage): Record<string, string> {
   const existingProto = req.headers['x-forwarded-proto'];
   const existingHost = req.headers['x-forwarded-host'];
   const existingPort = req.headers['x-forwarded-port'];
-  const proto = typeof existingProto === 'string' ? existingProto : 'http';
+  // 이 proxy 가 직접 TLS 를 끝냈으면 client 가 보낸 값과 상관없이 https 다.
+  const encrypted = (req.socket as { encrypted?: boolean }).encrypted === true;
+  const proto = encrypted ? 'https' : typeof existingProto === 'string' ? existingProto : 'http';
   const hostPort = /:(\d+)$/.exec(host)?.[1];
   return {
     'x-forwarded-for': typeof previousFor === 'string' ? `${previousFor}, ${remote}` : remote,
@@ -324,17 +329,22 @@ export function startProxy(options: ProxyOptions): Promise<RunningProxy> {
   const agent = new http.Agent({ keepAlive: true });
   const sockets = new Set<Duplex>();
 
-  const server = http.createServer((req, res) => {
+  const handler = (req: http.IncomingMessage, res: http.ServerResponse): void => {
     if (handleControl(req, res, options.control)) return;
     if (isProxiedPath(pathnameOf(req.url))) {
       forwardHttp(req, res, options.orchestrationPort, agent, onError);
       return;
     }
     serveHome(req, res, options.homeDir);
-  });
+  };
+  const server: http.Server =
+    options.tls === undefined
+      ? http.createServer(handler)
+      : https.createServer({ cert: options.tls.cert, key: options.tls.key }, handler);
   // 문서 upload 와 SSE 는 몇 분씩 걸린다. Node 의 기본 요청 시간 상한(300 초)을 끈다.
   server.requestTimeout = 0;
-  server.on('connection', (socket) => {
+  // TLS server 에서도 'connection' 은 handshake 전의 TCP socket 이라, 닫을 때 handshake 중인 연결까지 끊긴다.
+  server.on('connection', (socket: Duplex) => {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
   });

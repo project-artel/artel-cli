@@ -776,6 +776,31 @@ export interface ServerStartPayload {
    * 받는다. `ARTEL_RUNTIME_DIR` 을 쓰거나 이미 떠 있는 stack 에 붙었으면 언제나 `false` 다.
    */
   installed: boolean;
+  /**
+   * start 는 했지만 사용자가 알아야 할 위험. 지금은 모든 기계에 열려 있는데 http 라서 비밀번호와
+   * session cookie 가 평문으로 오간다는 경고 하나뿐이다. 없으면 빈 배열이다.
+   */
+  warnings: string[];
+}
+
+/** `artel server config --json` 과 `artel server config set --json`. */
+export interface ServerConfigPayload {
+  host: string;
+  port: number;
+  publicUrl: string;
+  /** TLS 를 쓰면 인증서와 key 파일의 절대 경로, 아니면 `null`. */
+  tls: { certFile: string; keyFile: string } | null;
+  dataDir: string;
+  /** `config.json` 의 경로. */
+  configFile: string;
+  /** `set` 이 `config.json` 에 썼으면 `true`. `show` 는 언제나 `false`. */
+  changed: boolean;
+  /** stack 이 지금 떠 있는가. */
+  running: boolean;
+  /** 떠 있는 stack 이 아직 옛 설정으로 돌고 있어 `stop` 과 `start` 가 필요하면 `true`. */
+  restartRequired: boolean;
+  /** 이 설정으로 start 하면 나올 경고. 없으면 빈 배열이다. */
+  warnings: string[];
 }
 
 /** `artel server stop --json`. */

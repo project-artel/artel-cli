@@ -84,6 +84,7 @@ artel server install          # download and verify the runtime bundle without s
 artel server status           # URL, supervisor pid and the state of each service
 artel server logs orchestration --follow
 artel server doctor           # runtime, version, privileges, data directory, disk, ports
+artel server config           # host, port, public URL and TLS files that the next start uses
 artel server stop
 ```
 
@@ -95,7 +96,31 @@ runtime (the desktop app sets it), `start` uses that and never downloads.
 `start --json` reports `installed: true` when this start downloaded the runtime.
 
 The stack listens on `127.0.0.1:8088` by default (another free port when that one
-is taken). `--host 0.0.0.0 --public-url <url>` opens it to a network. On a fresh
+is taken). The network settings live in `config.json` and are read in this order:
+the flag you pass to `start`, then `config.json`, then the default. A flag you pass
+is saved.
+
+```
+artel server config                                       # show them (--json too)
+artel server config set --host 0.0.0.0 --port 8088       # accept other machines
+artel server config set --public-url https://artel.example.com
+artel server config set --tls-cert ./cert.pem --tls-key ./key.pem
+artel server config set --no-tls
+```
+
+`config set` only writes `config.json`; a running stack keeps its old settings until
+`artel server stop` and `artel server start`. `start` also takes `--host`, `--port`,
+`--public-url`, `--tls-cert` and `--tls-key`.
+
+With `--tls-cert` and `--tls-key` the proxy serves HTTPS (the default public URL
+becomes `https://127.0.0.1:<port>`) and the files are read again on every start.
+The public URL must then be `https`; an `http` one is refused with
+`server_settings_invalid`. An `https` public URL in front of a plain-http proxy, such
+as a tunnel, is accepted too. Whenever the public URL is `https`, session cookies
+are marked `Secure`. `--host 0.0.0.0` with an `http` public URL prints a warning,
+because passwords and session cookies then cross the network in plain text.
+
+On a fresh
 data directory, open the URL and sign up: the first account becomes the
 administrator. Data lives in `~/.local/share/artel` (or `$XDG_DATA_HOME/artel`),
 `~/Library/Application Support/ARTEL` and `%LOCALAPPDATA%\ARTEL`. PostgreSQL

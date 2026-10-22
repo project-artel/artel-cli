@@ -53,6 +53,7 @@ import {
 import { runServerDoctor } from './commands/server/doctor.js';
 import { runServerInstall } from './commands/server/install.js';
 import { runServerLogs } from './commands/server/logs.js';
+import { runServerConfig, runServerConfigSet } from './commands/server/config.js';
 import { runServerStart } from './commands/server/start.js';
 import { runServerStatus } from './commands/server/status.js';
 import { runServerStop } from './commands/server/stop.js';
@@ -1775,20 +1776,27 @@ export async function runCli(
     .description(
       'Start PostgreSQL, orchestration, agent-server and the proxy, downloading the runtime bundle first when it is missing. Detaches unless --foreground is given',
     )
-    .option('--host <host>', 'address the proxy listens on', '127.0.0.1')
-    .option('--port <port>', 'proxy port; defaults to the saved port, or 8088 on the first start')
-    .option('--public-url <url>', 'URL people open; defaults to http://<host>:<port>')
-    .option('--foreground', 'run in this terminal until Ctrl-C', false)
     .option(
-      '--no-install',
-      'fail instead of downloading the runtime bundle when it is missing',
+      '--host <host>',
+      'address the proxy listens on; defaults to the saved host, or 127.0.0.1. Use 0.0.0.0 to accept other machines',
     )
+    .option('--port <port>', 'proxy port; defaults to the saved port, or 8088 on the first start')
+    .option(
+      '--public-url <url>',
+      'URL people open; defaults to the saved URL, or http(s)://127.0.0.1:<port>',
+    )
+    .option('--tls-cert <file>', 'TLS certificate file; serve HTTPS (needs --tls-key)')
+    .option('--tls-key <file>', 'TLS private key file (needs --tls-cert)')
+    .option('--foreground', 'run in this terminal until Ctrl-C', false)
+    .option('--no-install', 'fail instead of downloading the runtime bundle when it is missing')
     .option('--json', 'emit the machine-readable result instead of human output', false)
     .action(
       async (options: {
-        host: string;
+        host?: string | undefined;
         port?: string | undefined;
         publicUrl?: string | undefined;
+        tlsCert?: string | undefined;
+        tlsKey?: string | undefined;
         foreground: boolean;
         install: boolean;
         json: boolean;
@@ -1802,6 +1810,62 @@ export async function runCli(
             host: options.host,
             port: options.port === undefined ? undefined : parsePositiveInt(options.port, '--port'),
             publicUrl: options.publicUrl,
+            tlsCert: options.tlsCert,
+            tlsKey: options.tlsKey,
+          },
+          sink,
+          env,
+        );
+      },
+    );
+
+  const serverConfig = server
+    .command('config')
+    .description(
+      'Show or change the saved network settings: host, port, public URL and TLS files. Without a subcommand it shows them',
+    );
+
+  serverConfig
+    .command('show', { isDefault: true })
+    .description('Show the saved network settings')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .action(async (options: { json: boolean }) => {
+      json = options.json;
+      await runServerConfig(options, sink, env);
+    });
+
+  serverConfig
+    .command('set')
+    .description(
+      'Change the network settings in config.json. They apply on the next "artel server start"',
+    )
+    .option('--host <host>', 'address the proxy listens on; 0.0.0.0 accepts other machines')
+    .option('--port <port>', 'proxy port')
+    .option('--public-url <url>', 'URL people open; https when TLS is on')
+    .option('--tls-cert <file>', 'TLS certificate file (needs --tls-key)')
+    .option('--tls-key <file>', 'TLS private key file (needs --tls-cert)')
+    .option('--no-tls', 'serve plain HTTP again')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .action(
+      async (options: {
+        host?: string | undefined;
+        port?: string | undefined;
+        publicUrl?: string | undefined;
+        tlsCert?: string | undefined;
+        tlsKey?: string | undefined;
+        tls: boolean;
+        json: boolean;
+      }) => {
+        json = options.json;
+        await runServerConfigSet(
+          {
+            json: options.json,
+            host: options.host,
+            port: options.port === undefined ? undefined : parsePositiveInt(options.port, '--port'),
+            publicUrl: options.publicUrl,
+            tlsCert: options.tlsCert,
+            tlsKey: options.tlsKey,
+            noTls: !options.tls,
           },
           sink,
           env,

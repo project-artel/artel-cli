@@ -7,6 +7,7 @@ export type SupervisorErrorCode =
   | 'server_runtime_invalid'
   | 'server_privileged'
   | 'server_port_in_use'
+  | 'server_settings_invalid'
   | 'server_start_failed'
   | 'server_stop_failed'
   | 'server_install_failed'
