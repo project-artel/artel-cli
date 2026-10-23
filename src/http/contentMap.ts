@@ -169,8 +169,10 @@ function readSummary(value: unknown): ContentMapSummary | null {
     return null;
   }
   const summary = value as Record<string, unknown>;
-  const id = summary['id'];
-  if (typeof id !== 'string') {
+  // `ContentMapSummaryResponse.id` 는 `Long` 이라 JSON 숫자로 온다. 문자열만 받으면 map 이
+  // 있는데도 "없음" 으로 읽는다(ARTEL-1238).
+  const id = readId(summary['id']);
+  if (id === '') {
     return null;
   }
   const ingestedAt = summary['ingestedAt'];
