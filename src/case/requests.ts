@@ -2,6 +2,13 @@ import { CliError } from '../errors.js';
 import type { TestCaseCreateRequest, TestCaseUpdateRequest } from '../http/testcase.js';
 
 const CREATE_FIELDS = ['scene', 'step', 'precondition', 'expectedValue', 'folderId'] as const;
+/** 서버(`TestCaseService.requireField`)가 비어 있지 않은 문자열을 요구하는 필드. */
+const REQUIRED_CREATE_FIELDS = ['scene', 'step', 'expectedValue'] as const;
+
+/** 필수 필드 오류 메시지에 붙이는 예시 한 줄. */
+export const CASE_CREATE_EXAMPLE =
+  '{"scene": "Title Screen", "step": "Tap New Game", "expectedValue": "The game starts"}';
+
 const UPDATE_FIELDS = [
   'scene',
   'step',
@@ -26,6 +33,26 @@ export function toCreateRequest(value: unknown, label: string): TestCaseCreateRe
     }
   }
   return request;
+}
+
+/**
+ * 필수 필드 중 비었거나 없는 것의 이름. 서버는 첫 번째 빠진 필드에서 "scene is required" 하나만
+ * 돌려주므로, 파일을 서버에 보내기 전에 CLI 가 빠진 것 전부를 알려 준다.
+ */
+export function missingCreateFields(request: TestCaseCreateRequest): string[] {
+  return REQUIRED_CREATE_FIELDS.filter((field) => (request[field] ?? '').trim().length === 0);
+}
+
+/** 항목 하나의 필수 필드가 빠졌으면 `case_invalid_body` 로 던진다. 예시 한 줄을 함께 싣는다. */
+export function requireCreateFields(request: TestCaseCreateRequest, label: string): void {
+  const missing = missingCreateFields(request);
+  if (missing.length > 0) {
+    throw new CliError('case_invalid_body', describeMissing(label, missing));
+  }
+}
+
+export function describeMissing(label: string, missing: string[]): string {
+  return `${label} is missing required field(s): ${missing.join(', ')}. Every test case needs scene, step and expectedValue, for example ${CASE_CREATE_EXAMPLE}.`;
 }
 
 export function toUpdateRequest(value: unknown): TestCaseUpdateRequest {
