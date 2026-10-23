@@ -4,7 +4,11 @@ import path from 'node:path';
 import { CliError } from '../errors.js';
 import { type FetchLike } from '../http/client.js';
 import { buildGameLaunchArgs, deriveGameServerAddress } from './launch-args.js';
-import { generateGameLogPath } from './log-file.js';
+import {
+  generateGameLogPath,
+  resolveLaunchLogPath,
+  type LaunchLogPathResolver,
+} from './log-file.js';
 import {
   spawnGame,
   spawnGameProcess,
@@ -31,6 +35,7 @@ export interface GameLogoutDeps {
   fetchImpl: FetchLike;
   notify: (message: string) => void;
   generateLogPath: () => string;
+  launchLogPath?: LaunchLogPathResolver;
 }
 
 export function defaultGameLogoutDeps(
@@ -42,6 +47,7 @@ export function defaultGameLogoutDeps(
     fetchImpl: globalThis.fetch,
     notify,
     generateLogPath: () => generateGameLogPath(env),
+    launchLogPath: resolveLaunchLogPath,
   };
 }
 
@@ -74,7 +80,10 @@ export async function runGameLogoutFlow(
     secure,
     frontendUrl: options.consoleBaseUrl,
     projectId: null,
-    logFilePath,
+    logFilePath: await (deps.launchLogPath ?? ((logPath) => Promise.resolve(logPath)))(
+      logFilePath,
+      options.build,
+    ),
     width: options.width,
     height: options.height,
     // 세션만 지우고 곧장 끝나는 실행이라 전체 화면으로 띄울 이유가 없다. `game start` 와

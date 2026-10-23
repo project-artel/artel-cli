@@ -33,7 +33,6 @@ export async function runGameStart(
   makeDeps: (notify: (message: string) => void) => GameStartDeps = (notify) =>
     defaultGameStartDeps(notify, env),
 ): Promise<void> {
-
   // 진행 상황은 stderr 로 간다. `--json` 을 켠 쪽의 stdout 에는 payload 한 줄만 남아야 한다.
   const notify = (message: string): void => {
     sink.err(message);
@@ -80,6 +79,7 @@ export async function runGameStart(
     secure: result.secure,
     frontendUrl: config.consoleBaseUrl,
     logFilePath: result.logFilePath,
+    logFileUnavailableReason: result.logFileUnavailableReason,
     pid: result.pid,
   };
 
