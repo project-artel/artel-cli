@@ -195,6 +195,10 @@ takes.
 - The game launches windowed. `--width` and `--height` set the window size, and
   `--fullscreen` launches it full screen.
 - The game log goes to a new file under `~/.artel/logs`.
+  `artel game start` passes it to the game as `-logFile` and reports the path
+  only if the file exists when the game registers. Otherwise `--json` prints
+  `logFilePath: null` and `logFileUnavailableReason` says why. For a Windows
+  `.exe` launched from WSL the CLI hands the game the Windows form of the path.
 - If the build does not register within `--timeout` seconds (default 60), or
   exits first, the error says which and names the log file.
 
