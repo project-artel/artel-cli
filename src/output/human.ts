@@ -121,7 +121,10 @@ export function printGameStart(sink: OutputSink, payload: GameStartPayload): voi
     `  server         ${payload.serverAddress}${payload.secure ? ' (secure)' : ' (insecure)'}`,
   );
   sink.out(`  frontend       ${payload.frontendUrl}`);
-  sink.out(`  log file       ${payload.logFilePath}`);
+  sink.out(`  log file       ${payload.logFilePath ?? '-'}`);
+  if (payload.logFileUnavailableReason !== null) {
+    sink.out(`  log file note  ${payload.logFileUnavailableReason}`);
+  }
   sink.out(`  pid            ${payload.pid ?? '-'}`);
   sink.out(
     'The game keeps running after this command exits. Pass the instance id above to the QA commands.',

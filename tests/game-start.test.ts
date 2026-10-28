@@ -1,3 +1,5 @@
+import { writeFileSync } from 'node:fs';
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { writeCredential } from '../src/credentials/store.js';
@@ -56,8 +58,27 @@ function deps(api: FakeGameServer, overrides: Partial<GameStartDeps> = {}): Game
     notify: () => undefined,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     pollIntervalMs: 5,
-    generateLogPath: () => `${temp.root}/game.log`,
+    // 실제 Unity 는 `-logFile` 경로에 파일을 만든다. 이 손잡이는 그 파일이 이미 있는 상태를 흉내 낸다.
+    generateLogPath: () => {
+      writeFileSync(`${temp.root}/game.log`, '');
+      return `${temp.root}/game.log`;
+    },
     ...overrides,
+  };
+}
+
+function startOptions(api: FakeGameServer) {
+  return {
+    apiBaseUrl: api.baseUrl,
+    consoleBaseUrl: CONSOLE_BASE_URL,
+    cliToken: 'artel_cli_token',
+    build: '/games/my-game',
+    projectId: '42',
+    width: 1280,
+    height: 720,
+    fullscreen: false,
+    registrationTimeoutMs: 2_000,
+    processEnv: { PATH: '/usr/bin' },
   };
 }
 
@@ -88,6 +109,82 @@ describe('runGameStartFlow', () => {
       expect(api.mintCalls).toHaveLength(1);
       expect(api.mintCalls[0]?.authorization).toBe('Bearer artel_cli_token');
       expect(api.listCalls.every((call) => call.projectId === '42')).toBe(true);
+    } finally {
+      await api.close();
+    }
+  });
+
+  it('reports the log file the game was told to write, as a launch argument', async () => {
+    const api = await startFakeGameServer({
+      sdkToken: SDK_TOKEN,
+      instanceSequence: [[], [instance()]],
+    });
+    try {
+      const result = await runGameStartFlow(startOptions(api), deps(api));
+
+      const args = spawner.calls[0]?.args ?? [];
+      expect(args[args.indexOf('-logFile') + 1]).toBe(`${temp.root}/game.log`);
+      expect(result.logFilePath).toBe(`${temp.root}/game.log`);
+      expect(result.logFileUnavailableReason).toBeNull();
+    } finally {
+      await api.close();
+    }
+  });
+
+  it('passes the converted path to the game but reports the path the CLI can read', async () => {
+    const api = await startFakeGameServer({
+      sdkToken: SDK_TOKEN,
+      instanceSequence: [[], [instance()]],
+    });
+    try {
+      const result = await runGameStartFlow(
+        startOptions(api),
+        deps(api, { launchLogPath: () => Promise.resolve('\\\\wsl.localhost\\Ubuntu\\game.log') }),
+      );
+
+      const args = spawner.calls[0]?.args ?? [];
+      expect(args[args.indexOf('-logFile') + 1]).toBe('\\\\wsl.localhost\\Ubuntu\\game.log');
+      expect(result.logFilePath).toBe(`${temp.root}/game.log`);
+    } finally {
+      await api.close();
+    }
+  });
+
+  it('reports logFilePath null with a reason when the game never created the file', async () => {
+    const api = await startFakeGameServer({
+      sdkToken: SDK_TOKEN,
+      instanceSequence: [[], [instance()]],
+    });
+    try {
+      const result = await runGameStartFlow(
+        startOptions(api),
+        deps(api, { generateLogPath: () => `${temp.root}/never-written.log` }),
+      );
+
+      expect(result.instance.id).toBe('instance-1');
+      expect(result.logFilePath).toBeNull();
+      expect(result.logFileUnavailableReason).toContain(`${temp.root}/never-written.log`);
+      expect(result.logFileUnavailableReason).toContain('no file exists there');
+    } finally {
+      await api.close();
+    }
+  });
+
+  it('reports logFilePath null with a reason when the log directory cannot be created', async () => {
+    const api = await startFakeGameServer({
+      sdkToken: SDK_TOKEN,
+      instanceSequence: [[], [instance()]],
+    });
+    try {
+      // 파일 아래에는 디렉터리를 만들 수 없다.
+      writeFileSync(`${temp.root}/not-a-directory`, '');
+      const result = await runGameStartFlow(
+        startOptions(api),
+        deps(api, { generateLogPath: () => `${temp.root}/not-a-directory/game.log` }),
+      );
+
+      expect(result.logFilePath).toBeNull();
+      expect(result.logFileUnavailableReason).toContain('Could not create the log directory');
     } finally {
       await api.close();
     }
@@ -341,6 +438,7 @@ describe('artel game start (command layer)', () => {
           'instanceId',
           'launched',
           'logFilePath',
+          'logFileUnavailableReason',
           'pid',
           'projectId',
           'registeredAt',

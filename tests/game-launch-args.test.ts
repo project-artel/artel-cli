@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildGameLaunchArgs, deriveGameServerAddress } from '../src/game/launch-args.js';
+import { resolveLaunchLogPath } from '../src/game/log-file.js';
 
 describe('deriveGameServerAddress', () => {
   it('keeps an explicit port', () => {
@@ -96,5 +97,13 @@ describe('buildGameLaunchArgs', () => {
     const args = buildGameLaunchArgs({ ...base, secure: true, logout: false });
     const index = args.indexOf('-artel-secure');
     expect(args[index + 1]).toBe('true');
+  });
+});
+
+describe('resolveLaunchLogPath', () => {
+  it('leaves the path alone for a build that is not a Windows executable', async () => {
+    await expect(
+      resolveLaunchLogPath('/home/user/.artel/logs/game-1.log', '/games/my-game'),
+    ).resolves.toBe('/home/user/.artel/logs/game-1.log');
   });
 });

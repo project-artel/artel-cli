@@ -290,7 +290,7 @@ describe('doc upload', () => {
       pdfPath,
       { ...baseOptions(), watch: false },
       createMemorySink(),
-      { ARTEL_API_BASE_URL: api.baseUrl, HOME: root, USERPROFILE: root },
+      { ARTEL_API_BASE_URL: api.baseUrl, ARTEL_CONFIG_DIR: root },
     ).then(
       () => null,
       (thrown: unknown) => thrown,

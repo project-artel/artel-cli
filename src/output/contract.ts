@@ -71,7 +71,9 @@ export interface GameStartPayload {
   serverAddress: string;
   secure: boolean;
   frontendUrl: string;
-  logFilePath: string;
+  /** 게임이 실제로 로그를 남긴 파일. 파일이 없으면 `null` 이고 이유는 [logFileUnavailableReason] 에 있다. */
+  logFilePath: string | null;
+  logFileUnavailableReason: string | null;
   pid: number | null;
 }
 

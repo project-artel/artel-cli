@@ -162,6 +162,29 @@ whether each one is connected now. An instance appears only after a build with
 the SDK has registered once, so an empty list usually means `artel game start`
 has not run yet.
 
+## Creating test cases
+
+**`artel case create --project <id> --file cases.json`** creates one test case
+from a JSON object, or many from a JSON array of them. Without `--file` it reads
+standard input.
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `scene` | yes | the scene the case is about |
+| `step` | yes | what to do |
+| `expectedValue` | yes | what should be true afterwards |
+| `precondition` | no | what must hold before the step |
+| `folderId` | no | the folder to file it in; `--folder` fills it for items that leave it out |
+
+```json
+[{ "scene": "Title Screen", "step": "Tap New Game", "expectedValue": "The game starts" }]
+```
+
+The whole file is validated before anything is created. If any item is missing a
+required field, the error names each item by index (`items[3]`) and nothing is
+created, so the same file can be fixed and run again. Once validation passes, an
+item the server rejects does not stop the rest; the result lists each item.
+
 ## Launching a game
 
 **`artel game start --build <path> --project <id>`** launches the build already
@@ -172,6 +195,10 @@ takes.
 - The game launches windowed. `--width` and `--height` set the window size, and
   `--fullscreen` launches it full screen.
 - The game log goes to a new file under `~/.artel/logs`.
+  `artel game start` passes it to the game as `-logFile` and reports the path
+  only if the file exists when the game registers. Otherwise `--json` prints
+  `logFilePath: null` and `logFileUnavailableReason` says why. For a Windows
+  `.exe` launched from WSL the CLI hands the game the Windows form of the path.
 - If the build does not register within `--timeout` seconds (default 60), or
   exits first, the error says which and names the log file.
 

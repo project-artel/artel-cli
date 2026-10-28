@@ -898,12 +898,12 @@ export async function runCli(
   caseGroup
     .command('create')
     .description(
-      'Create one test case, or many at once, from a JSON body read from --file or standard input',
+      'Create one test case, or many at once, from a JSON body read from --file or standard input. Every test case needs scene, step and expectedValue (non-empty strings); precondition and folderId are optional. The whole file is validated first, and nothing is created if any item is invalid.',
     )
     .requiredOption('--project <id>', 'project to create the test case(s) in')
     .option(
       '--file <path>',
-      'path to a JSON test case object, or a JSON array of them; omit to read standard input',
+      'path to a JSON test case object, or a JSON array of them, for example [{"scene": "Title Screen", "step": "Tap New Game", "expectedValue": "The game starts"}]; omit to read standard input',
     )
     .option('--folder <id>', 'folder for every test case whose body does not set folderId')
     .option('--json', 'emit the machine-readable result instead of human output', false)

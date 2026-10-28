@@ -198,7 +198,7 @@ describe('case create — one', () => {
     expect(api.requests.some((request) => request.method === 'POST')).toBe(true);
   });
 
-  it('reports case_invalid_request for a missing required field', async () => {
+  it('reports case_invalid_body naming the missing fields and an example, before any request', async () => {
     api = await startFakeCaseServer({ memberProjectIds: ['1'] });
     const sink = createMemorySink();
 
@@ -210,7 +210,13 @@ describe('case create — one', () => {
         undefined,
         stdinOf(JSON.stringify({ scene: 'Title Screen' })),
       ),
-    ).rejects.toMatchObject({ code: 'case_invalid_request' });
+    ).rejects.toMatchObject({
+      code: 'case_invalid_body',
+      message: expect.stringMatching(
+        /body is missing required field\(s\): step, expectedValue.*"scene"/,
+      ) as string,
+    });
+    expect(api.requests.some((request) => request.method === 'POST')).toBe(false);
   });
 
   it('reports case_not_found for a project the caller cannot create in', async () => {
@@ -271,12 +277,33 @@ describe('case create — many', () => {
     expect(api.items()).toHaveLength(3);
   });
 
-  it('keeps going past a failing item and reports it without aborting the rest', async () => {
+  it('creates nothing when any item of the file is missing a required field', async () => {
     api = await startFakeCaseServer({ memberProjectIds: ['1'] });
     const sink = createMemorySink();
     const body = JSON.stringify([
       { scene: 'Title Screen', step: 'Tap "New Game"', expectedValue: 'a' },
-      { scene: 'Title Screen' }, // step, expectedValue 없음 → 400
+      { scene: 'Title Screen' }, // step, expectedValue 없음
+      { step: 'Tap "Options"', expectedValue: 'c' }, // scene 없음
+    ]);
+
+    await expect(
+      runCaseCreate({ json: true, project: '1' }, sink, envFor(api), undefined, stdinOf(body)),
+    ).rejects.toMatchObject({
+      code: 'case_invalid_body',
+      message: expect.stringMatching(
+        /2 of 3 items are invalid[\s\S]*items\[1\] is missing required field\(s\): step, expectedValue[\s\S]*items\[2\] is missing required field\(s\): scene[\s\S]*"scene"/,
+      ) as string,
+    });
+    expect(api.requests.some((request) => request.method === 'POST')).toBe(false);
+    expect(api.items()).toHaveLength(0);
+  });
+
+  it('keeps going past an item the server rejects and reports it without aborting the rest', async () => {
+    api = await startFakeCaseServer({ memberProjectIds: ['1'] });
+    const sink = createMemorySink();
+    const body = JSON.stringify([
+      { scene: 'Title Screen', step: 'Tap "New Game"', expectedValue: 'a' },
+      { scene: 'Title Screen', step: 'Tap "Quit"', expectedValue: 'b', folderId: '999' }, // 없는 folder → 404
       { scene: 'Title Screen', step: 'Tap "Options"', expectedValue: 'c' },
     ]);
 
@@ -293,9 +320,7 @@ describe('case create — many', () => {
     expect(payload).toMatchObject({ requested: 3, created: 2, failed: 1 });
     expect(payload.results[0]?.created).not.toBeNull();
     expect(payload.results[1]?.created).toBeNull();
-    expect(payload.results[1]?.error?.code).toBe('case_invalid_request');
     expect(payload.results[2]?.created).not.toBeNull();
-    // 실패한 항목 다음도 계속 만들어졌다 — 전부 서버에 남아 있다.
     expect(api.items()).toHaveLength(2);
   });
 
