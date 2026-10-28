@@ -1,7 +1,7 @@
 import { parseCaseBody, readCaseBody } from '../../case/body.js';
 import { resolveCaseContext } from '../../case/context.js';
 import { toTestCasePayload } from '../../case/report.js';
-import { toCreateRequest } from '../../case/requests.js';
+import { describeMissing, missingCreateFields, toCreateRequest } from '../../case/requests.js';
 import { CliError } from '../../errors.js';
 import { EXIT_FAILURE, EXIT_OK } from '../../exit.js';
 import type { FetchLike } from '../../http/client.js';
@@ -24,10 +24,11 @@ export interface CaseCreateCommandOptions {
  * body 가 객체 하나면 케이스 하나를 만들고, 배열이면 그 개수만큼 만든다.
  *
  * 서버에 일괄 생성 endpoint 가 없다(`TestCaseController` 에는 `POST` 단건뿐이다) — 그래서
- * 배열은 CLI 가 항목마다 따로 요청한다. 여기서 반드시 지키는 것은 **하나가 막혀도 멈추지
- * 않는다**는 것이다: 벤치마크 자료처럼 수십 건을 한 번에 넣을 때, 앞쪽 한 항목이 형식이
- * 틀렸다고 뒤쪽 서른 건까지 못 만들 이유가 없다. 대신 무엇이 됐고 무엇이 안 됐는지를
- * [CaseCreateBatchPayload] 에 항목별로 남기고, 하나라도 실패하면 exit code 로 그것을 알린다.
+ * 배열은 CLI 가 항목마다 따로 요청한다. 요청을 보내기 전에 파일 전체의 형식과 필수 필드
+ * (`scene`, `step`, `expectedValue`)를 검증하고, 하나라도 틀리면 아무것도 만들지 않는다.
+ * 검증을 통과한 뒤 서버가 항목을 거절하면(권한, 없는 folder 등) 나머지는 계속 만들고,
+ * 무엇이 됐고 무엇이 안 됐는지를 [CaseCreateBatchPayload] 에 항목별로 남긴다. 하나라도
+ * 실패하면 exit code 로 그것을 알린다.
  */
 export async function runCaseCreate(
   options: CaseCreateCommandOptions,
@@ -45,6 +46,10 @@ export async function runCaseCreate(
   }
 
   const request = withDefaultFolder(toCreateRequest(body, 'body'), options.folder);
+  const missing = missingCreateFields(request);
+  if (missing.length > 0) {
+    throw new CliError('case_invalid_body', describeMissing('body', missing));
+  }
   const created = await createTestCase(
     context.apiBaseUrl,
     context.cliToken,
@@ -65,6 +70,31 @@ function withDefaultFolder(
     : request;
 }
 
+function validateAll(items: unknown[], folder: string | undefined): TestCaseCreateRequest[] {
+  const requests: TestCaseCreateRequest[] = [];
+  const problems: string[] = [];
+  for (const [index, item] of items.entries()) {
+    const label = `items[${String(index)}]`;
+    try {
+      const request = withDefaultFolder(toCreateRequest(item, label), folder);
+      const missing = missingCreateFields(request);
+      if (missing.length > 0) {
+        problems.push(describeMissing(label, missing));
+      }
+      requests.push(request);
+    } catch (error) {
+      problems.push(error instanceof Error ? error.message : 'unknown error');
+    }
+  }
+  if (problems.length > 0) {
+    throw new CliError(
+      'case_invalid_body',
+      `${String(problems.length)} of ${String(items.length)} items are invalid, so no test case was created:\n${problems.join('\n')}`,
+    );
+  }
+  return requests;
+}
+
 async function createMany(
   context: { apiBaseUrl: string; cliToken: string },
   options: CaseCreateCommandOptions,
@@ -79,13 +109,13 @@ async function createMany(
     );
   }
 
+  // 파일 전체를 먼저 검증한다. 앞의 몇 건만 만들어지고 나머지가 실패하면 반쯤 생성된 상태가
+  // 남고, 같은 파일을 다시 넣으면 앞 건이 중복된다. 하나라도 틀리면 아무것도 만들지 않는다.
+  const requests = validateAll(items, options.folder);
+
   const results: CaseCreateResultPayload[] = [];
-  for (const [index, item] of items.entries()) {
+  for (const [index, request] of requests.entries()) {
     try {
-      const request = withDefaultFolder(
-        toCreateRequest(item, `items[${String(index)}]`),
-        options.folder,
-      );
       const created = await createTestCase(
         context.apiBaseUrl,
         context.cliToken,
