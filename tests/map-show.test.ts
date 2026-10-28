@@ -58,6 +58,21 @@ describe('artel map show', () => {
     });
   });
 
+  /** 서버의 `ContentMapSummaryResponse.id` 는 `Long` 이라 JSON 숫자로 온다. */
+  it('reads a numeric content map id instead of reporting no map', async () => {
+    api = await startFakeDocServer({
+      contentMap: { ...FILLED_MAP, contentMap: { id: 4, ingestedAt: '2026-09-08T05:00:00Z' } },
+    });
+    const sink = createMemorySink();
+
+    await runMapShow(baseOptions(), sink, envOf());
+
+    expect(sink.lastJson<ContentMapViewPayload>()).toMatchObject({
+      contentMapId: '4',
+      scenes: 3,
+    });
+  });
+
   /**
    * 두 "없음" 은 다음에 할 일이 다르다. 하나는 문서를 올리는 것이고, 다른 하나는 앉기를
    * 기다리거나 왜 못 앉았는지 보는 것이다. 같은 문장으로 덮으면 안 된다.
