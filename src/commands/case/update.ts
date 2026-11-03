@@ -3,7 +3,7 @@ import { resolveCaseContext } from '../../case/context.js';
 import { toTestCasePayload } from '../../case/report.js';
 import { toUpdateRequest } from '../../case/requests.js';
 import type { FetchLike } from '../../http/client.js';
-import { updateTestCase } from '../../http/testcase.js';
+import { requireReviewStatusSupport, updateTestCase } from '../../http/testcase.js';
 import type { OutputSink } from '../../output/envelope.js';
 import { reportTestCase } from './output.js';
 
@@ -27,6 +27,14 @@ export async function runCaseUpdate(
   const context = await resolveCaseContext(env, options.apiUrl);
   const text = await readCaseBody(options.file, stdin);
   const request = toUpdateRequest(parseCaseBody(text, options.file));
+  if (request.reviewStatus !== undefined) {
+    await requireReviewStatusSupport(
+      context.apiBaseUrl,
+      context.cliToken,
+      options.project,
+      fetchImpl,
+    );
+  }
 
   const updated = await updateTestCase(
     context.apiBaseUrl,

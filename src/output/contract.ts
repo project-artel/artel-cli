@@ -349,6 +349,7 @@ export interface QaDiffPayload {
  * CLI 가 다시 이름 짓지 않는다.
  */
 export interface TestCasePayload {
+  reviewStatus: 'DRAFT' | 'READY';
   id: string;
   projectId: string;
   scene: string;

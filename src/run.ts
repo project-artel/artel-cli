@@ -906,6 +906,8 @@ export async function runCli(
       'path to a JSON test case object, or a JSON array of them, for example [{"scene": "Title Screen", "step": "Tap New Game", "expectedValue": "The game starts"}]; omit to read standard input',
     )
     .option('--folder <id>', 'folder for every test case whose body does not set folderId')
+    .option('--draft', 'create draft test cases for review (default)', true)
+    .option('--no-draft', 'create ready test cases that can be used immediately')
     .option('--json', 'emit the machine-readable result instead of human output', false)
     .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
     .action(
@@ -913,6 +915,7 @@ export async function runCli(
         project: string;
         file?: string | undefined;
         folder?: string | undefined;
+        draft: boolean;
         json: boolean;
         apiUrl?: string | undefined;
       }) => {
@@ -923,6 +926,7 @@ export async function runCli(
             project: options.project,
             file: options.file,
             folder: options.folder,
+            draft: options.draft,
             apiUrl: options.apiUrl,
           },
           sink,

@@ -15,6 +15,8 @@ function testCasePath(projectId: string, caseId: string): string {
   return `${testCasesPath(projectId)}/${encodeURIComponent(caseId)}`;
 }
 
+export type ReviewStatus = 'DRAFT' | 'READY';
+
 /**
  * `TestCaseResponse`(orchestration `testcase/dto/TestCaseDtos.kt`)와 같은 필드, 같은 이름.
  * `case list`·`case create`·`case update` 가 이 모양을 낸다.
@@ -28,6 +30,7 @@ export interface TestCase {
   expectedValue: string;
   status: string | null;
   verificationStatus: string;
+  reviewStatus: ReviewStatus;
   lastVerifiedBuildId: string | null;
   /** 이 케이스가 든 folder(ARTEL-969). `null` 이면 folder 없음이다. */
   folderId: string | null;
@@ -41,6 +44,7 @@ export interface TestCaseDetail extends TestCase {
 
 /** `TestCaseCreateRequest`. 값은 자연어이고 셋(`scene`/`step`/`expectedValue`)은 서버가 필수로 본다. */
 export interface TestCaseCreateRequest {
+  draft?: boolean | undefined;
   scene?: string | undefined;
   step?: string | undefined;
   precondition?: string | undefined;
@@ -51,6 +55,7 @@ export interface TestCaseCreateRequest {
 
 /** `TestCaseUpdateRequest`. 준 필드만 반영되고, 나머지는 기존 값을 유지한다(서버 쪽 규칙). */
 export interface TestCaseUpdateRequest {
+  reviewStatus?: ReviewStatus | undefined;
   scene?: string | undefined;
   step?: string | undefined;
   precondition?: string | undefined;
@@ -77,6 +82,50 @@ export async function listTestCases(
   );
 }
 
+export async function requireReviewStatusSupport(
+  apiBaseUrl: string,
+  cliToken: string,
+  projectId: string,
+  fetchImpl?: FetchLike,
+): Promise<void> {
+  const endpoint = `${apiBaseUrl}${testCasesPath(projectId)}/review-status-options`;
+  const body = await requestJson({
+    method: 'GET',
+    endpoint,
+    cliToken,
+    ...(fetchImpl === undefined ? {} : { fetchImpl }),
+    onFailure: (failure) =>
+      failure.status === 404
+        ? new CliError(
+            'case_review_unsupported',
+            'Review status is unavailable on this server or project. Update the server and check project access; no test cases were changed.',
+          )
+        : caseFailure(failure, projectId),
+  });
+  const record = asObject(body, 'body', endpoint);
+  const statuses = asArray(record['statuses'], 'statuses', endpoint);
+  if (!statuses.includes('DRAFT') || !statuses.includes('READY')) {
+    throw new CliError(
+      'case_review_unsupported',
+      'This server does not support DRAFT and READY review states; no test cases were changed.',
+    );
+  }
+}
+
+function requireReturnedReviewStatus(
+  body: unknown,
+  expected: ReviewStatus,
+  endpoint: string,
+): void {
+  const record = asObject(body, 'body', endpoint);
+  if (record['reviewStatus'] !== expected) {
+    throw new CliError(
+      'case_review_mismatch',
+      `The server did not confirm reviewStatus ${expected}. Check the saved test case before retrying.`,
+    );
+  }
+}
+
 /** `POST /api/projects/{projectId}/test-cases`. 비참여자는 404 다(존재 자체를 숨긴다). */
 export async function createTestCase(
   apiBaseUrl: string,
@@ -94,6 +143,7 @@ export async function createTestCase(
     ...(fetchImpl === undefined ? {} : { fetchImpl }),
     onFailure: (failure) => caseFailure(failure, projectId),
   });
+  requireReturnedReviewStatus(body, request.draft === true ? 'DRAFT' : 'READY', endpoint);
   return parseTestCase(body, 'body', endpoint);
 }
 
@@ -132,6 +182,8 @@ export async function updateTestCase(
     ...(fetchImpl === undefined ? {} : { fetchImpl }),
     onFailure: (failure) => caseFailure(failure, projectId, caseId),
   });
+  if (request.reviewStatus !== undefined)
+    requireReturnedReviewStatus(body, request.reviewStatus, endpoint);
   return parseTestCase(body, 'body', endpoint);
 }
 
@@ -178,6 +230,10 @@ function caseFailure(failure: HttpFailure, projectId: string, caseId?: string): 
 
 function parseTestCase(value: unknown, field: string, endpoint: string): TestCase {
   const item = asObject(value, field, endpoint);
+  const reviewStatus = item['reviewStatus'] === undefined ? 'READY' : item['reviewStatus'];
+  if (reviewStatus !== 'DRAFT' && reviewStatus !== 'READY') {
+    throw new CliError('server_error', `${endpoint} answered with an invalid reviewStatus.`);
+  }
   return {
     id: asString(item['id'], `${field}.id`, endpoint),
     projectId: asString(item['projectId'], `${field}.projectId`, endpoint),
@@ -186,6 +242,7 @@ function parseTestCase(value: unknown, field: string, endpoint: string): TestCas
     precondition: asNullableString(item['precondition'], `${field}.precondition`, endpoint),
     expectedValue: asString(item['expectedValue'], `${field}.expectedValue`, endpoint),
     status: asNullableString(item['status'], `${field}.status`, endpoint),
+    reviewStatus,
     verificationStatus: asString(
       item['verificationStatus'],
       `${field}.verificationStatus`,

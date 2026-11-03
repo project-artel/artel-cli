@@ -30,6 +30,7 @@ const TEST_CASE_KEYS = [
   'lastVerifiedBuildId',
   'precondition',
   'projectId',
+  'reviewStatus',
   'scene',
   'status',
   'step',
