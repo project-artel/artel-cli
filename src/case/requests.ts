@@ -25,6 +25,12 @@ const UPDATE_FIELDS = [
  */
 export function toCreateRequest(value: unknown, label: string): TestCaseCreateRequest {
   const record = asRecord(value, label, 'a test case object');
+  if ('draft' in record || 'reviewStatus' in record) {
+    throw new CliError(
+      'case_invalid_body',
+      `${label}: use --draft or --no-draft to set review state for all created cases; do not set draft or reviewStatus in JSON.`,
+    );
+  }
   const request: TestCaseCreateRequest = {};
   for (const field of CREATE_FIELDS) {
     const parsed = optionalString(record[field], `${label}.${field}`);
@@ -63,6 +69,12 @@ export function toUpdateRequest(value: unknown): TestCaseUpdateRequest {
     if (parsed !== undefined) {
       request[field] = parsed;
     }
+  }
+  if (record['reviewStatus'] !== undefined) {
+    if (record['reviewStatus'] !== 'DRAFT' && record['reviewStatus'] !== 'READY') {
+      throw new CliError('case_invalid_body', 'body.reviewStatus must be DRAFT or READY.');
+    }
+    request.reviewStatus = record['reviewStatus'];
   }
   return request;
 }

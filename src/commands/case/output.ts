@@ -39,7 +39,7 @@ export function reportCaseList(
   sink.out(`${String(payload.items.length)} test case(s) in project ${projectId}.`);
   for (const item of payload.items) {
     sink.out(
-      `  ${item.id.padStart(6)}  ${item.verificationStatus.padEnd(10)}  ${singleLine(item.scene)} — ${singleLine(item.step)}`,
+      `  ${item.id.padStart(6)}  ${item.reviewStatus.padEnd(5)}  ${item.verificationStatus.padEnd(10)}  ${singleLine(item.scene)} — ${singleLine(item.step)}`,
     );
   }
 }
@@ -82,6 +82,7 @@ function printTestCaseFields(sink: OutputSink, payload: TestCasePayload): void {
   field(sink, 'precondition', payload.precondition ?? '-');
   field(sink, 'expected value', payload.expectedValue);
   field(sink, 'status', payload.status ?? '-');
+  field(sink, 'review status', payload.reviewStatus);
   field(sink, 'verification status', payload.verificationStatus);
   field(sink, 'last verified build', payload.lastVerifiedBuildId ?? '-');
   field(sink, 'folder', payload.folderId ?? '-');
@@ -109,7 +110,7 @@ export function reportCaseCreateBatch(
   for (const result of payload.results) {
     if (result.created !== null) {
       sink.out(
-        `  [${String(result.index)}] created  ${result.created.id}  ${singleLine(result.created.scene)} — ${singleLine(result.created.step)}`,
+        `  [${String(result.index)}] created  ${result.created.id}  ${result.created.reviewStatus}  ${singleLine(result.created.scene)} — ${singleLine(result.created.step)}`,
       );
     } else {
       sink.out(

@@ -168,6 +168,16 @@ has not run yet.
 from a JSON object, or many from a JSON array of them. Without `--file` it reads
 standard input.
 
+기본으로 검토 전 초안(`reviewStatus: DRAFT`)을 만듭니다. `--no-draft`를 붙이면
+즉시 사용 가능한 `READY`로 만들고, `--draft`로 기본 동작을 명시할 수도 있습니다.
+이 옵션은 파일의 모든 TC에 적용되므로 JSON 본문에는 `draft`나 `reviewStatus`를 넣지 않습니다.
+실행 검증 상태(`verificationStatus`)는 두 경우 모두 `DRAFT`로 시작합니다.
+
+저장한 초안은 `artel case update <case-id> --project <id> --file approval.json`으로
+승인할 수 있습니다. `approval.json`의 내용은 `{"reviewStatus":"READY"}`입니다.
+일반 본문 수정은 검토 상태를 바꾸지 않습니다. 생성과 검토 상태 변경 전에 서버의
+`review-status-options`를 확인하며, 미지원 서버에는 저장 요청을 보내지 않습니다.
+
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `scene` | yes | the scene the case is about |
