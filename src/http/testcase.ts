@@ -28,7 +28,6 @@ export interface TestCase {
   step: string;
   precondition: string | null;
   expectedValue: string;
-  status: string | null;
   verificationStatus: string;
   reviewStatus: ReviewStatus;
   lastVerifiedBuildId: string | null;
@@ -241,7 +240,6 @@ function parseTestCase(value: unknown, field: string, endpoint: string): TestCas
     step: asString(item['step'], `${field}.step`, endpoint),
     precondition: asNullableString(item['precondition'], `${field}.precondition`, endpoint),
     expectedValue: asString(item['expectedValue'], `${field}.expectedValue`, endpoint),
-    status: asNullableString(item['status'], `${field}.status`, endpoint),
     reviewStatus,
     verificationStatus: asString(
       item['verificationStatus'],

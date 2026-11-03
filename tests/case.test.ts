@@ -32,7 +32,6 @@ const TEST_CASE_KEYS = [
   'projectId',
   'reviewStatus',
   'scene',
-  'status',
   'step',
   'verificationStatus',
 ];

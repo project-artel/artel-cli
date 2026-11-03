@@ -81,7 +81,6 @@ function printTestCaseFields(sink: OutputSink, payload: TestCasePayload): void {
   field(sink, 'step', payload.step);
   field(sink, 'precondition', payload.precondition ?? '-');
   field(sink, 'expected value', payload.expectedValue);
-  field(sink, 'status', payload.status ?? '-');
   field(sink, 'review status', payload.reviewStatus);
   field(sink, 'verification status', payload.verificationStatus);
   field(sink, 'last verified build', payload.lastVerifiedBuildId ?? '-');

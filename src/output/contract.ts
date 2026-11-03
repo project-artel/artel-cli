@@ -356,7 +356,6 @@ export interface TestCasePayload {
   step: string;
   precondition: string | null;
   expectedValue: string;
-  status: string | null;
   verificationStatus: string;
   lastVerifiedBuildId: string | null;
   /** 이 케이스가 든 folder. `null` 이면 folder 없음이다. */
