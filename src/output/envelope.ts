@@ -1,4 +1,5 @@
 import type { ErrorCode } from '../errors.js';
+import type { GuideDocumentPayload, GuideListPayload } from '../guides/knowledge.js';
 import type {
   CaseCreateBatchPayload,
   CaseDeletePayload,
@@ -46,6 +47,8 @@ import type {
 } from './contract.js';
 
 export type CommandPayload =
+  | GuideListPayload
+  | GuideDocumentPayload
   | LoginPayload
   | StatusPayload
   | LogoutPayload

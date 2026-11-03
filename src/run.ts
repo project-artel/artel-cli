@@ -1,4 +1,5 @@
 import os from 'node:os';
+import { runGuideList, runGuideShow } from './commands/guide/show.js';
 
 import { Command, CommanderError } from 'commander';
 
@@ -197,6 +198,17 @@ export async function runCli(
       writeErr: (text) => {
         sink.err(text.replace(/\n$/, ''));
       },
+    });
+
+  const guide = program.command('guide').description('Read versioned ARTEL skill guidance without signing in');
+  guide.command('list').description('List available skill guides')
+    .option('--json', 'emit the machine-readable result', false)
+    .action(async (options: { json: boolean }) => { json = options.json; await runGuideList(json, sink); });
+  guide.command('show <topic>').description('Read a skill or one of its listed references')
+    .option('--reference <path>', 'read a listed supporting reference')
+    .option('--json', 'emit the machine-readable result', false)
+    .action(async (topic: string, options: { json: boolean; reference?: string }) => {
+      json = options.json; await runGuideShow(topic, options.reference, json, sink);
     });
 
   const auth = program.command('auth').description('Manage the credential this machine uses');
