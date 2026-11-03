@@ -31,7 +31,6 @@ const TEST_CASE_KEYS = [
   'precondition',
   'projectId',
   'scene',
-  'status',
   'step',
   'verificationStatus',
 ];

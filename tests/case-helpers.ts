@@ -16,7 +16,6 @@ export interface FakeTestCase {
   step: string;
   precondition: string | null;
   expectedValue: string;
-  status: string | null;
   verificationStatus: string;
   lastVerifiedBuildId: string | null;
   folderId: string | null;
@@ -59,7 +58,6 @@ export function fakeTestCase(overrides: Partial<FakeTestCase> = {}): FakeTestCas
     step: 'Tap "New Game"',
     precondition: null,
     expectedValue: 'The naming screen appears.',
-    status: null,
     verificationStatus: 'DRAFT',
     lastVerifiedBuildId: null,
     folderId: null,
@@ -306,7 +304,6 @@ export async function startFakeCaseServer(options: FakeCaseServerOptions): Promi
           precondition:
             precondition !== undefined && precondition.trim() !== '' ? precondition : null,
           expectedValue: expectedValue ?? '',
-          status: null,
           verificationStatus: 'DRAFT',
           lastVerifiedBuildId: null,
           folderId: folderId !== undefined && folderId !== '' ? folderId : null,

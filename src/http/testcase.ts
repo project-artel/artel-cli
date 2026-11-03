@@ -26,7 +26,6 @@ export interface TestCase {
   step: string;
   precondition: string | null;
   expectedValue: string;
-  status: string | null;
   verificationStatus: string;
   lastVerifiedBuildId: string | null;
   /** 이 케이스가 든 folder(ARTEL-969). `null` 이면 folder 없음이다. */
@@ -185,7 +184,6 @@ function parseTestCase(value: unknown, field: string, endpoint: string): TestCas
     step: asString(item['step'], `${field}.step`, endpoint),
     precondition: asNullableString(item['precondition'], `${field}.precondition`, endpoint),
     expectedValue: asString(item['expectedValue'], `${field}.expectedValue`, endpoint),
-    status: asNullableString(item['status'], `${field}.status`, endpoint),
     verificationStatus: asString(
       item['verificationStatus'],
       `${field}.verificationStatus`,
