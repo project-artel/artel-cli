@@ -44,6 +44,19 @@ The full list of skills is in
 
 ## Commands
 
+### Skill 안내 조회 추가
+
+이 기능을 포함한 CLI에서는 로그인 없이 skill 원문과 supporting reference를 조회할 수 있습니다.
+
+```bash
+artel guide list
+artel guide show artel-game-identities
+artel guide show artel-cheats --reference references/compile-guard.md
+artel guide show artel-unity-sdk --json
+```
+
+목록과 원문은 `artel-skills`의 같은 commit으로 고정되며 응답에 revision과 source URL을 표시합니다. 최신 branch를 자동으로 따라가지 않습니다. 조회는 SDK나 skill을 설치하지 않으며, 설치·attribute 작성·MCP 및 웹 등록 절차는 조회한 안내에서 확인합니다. 네트워크 조회가 실패하면 nonzero exit와 오류를 반환합니다.
+
 ```
 artel auth login                                        # this machine's credential
 artel project list                                      # ids the other commands take
