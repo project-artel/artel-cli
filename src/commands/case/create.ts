@@ -5,7 +5,11 @@ import { describeMissing, missingCreateFields, toCreateRequest } from '../../cas
 import { CliError } from '../../errors.js';
 import { EXIT_FAILURE, EXIT_OK } from '../../exit.js';
 import type { FetchLike } from '../../http/client.js';
-import { createTestCase, type TestCaseCreateRequest } from '../../http/testcase.js';
+import {
+  createTestCase,
+  requireReviewStatusSupport,
+  type TestCaseCreateRequest,
+} from '../../http/testcase.js';
 import type { CaseCreateBatchPayload, CaseCreateResultPayload } from '../../output/contract.js';
 import type { OutputSink } from '../../output/envelope.js';
 import { reportCaseCreateBatch, reportTestCase } from './output.js';
@@ -17,6 +21,7 @@ export interface CaseCreateCommandOptions {
   file?: string | undefined;
   /** `--folder`. body 항목에 `folderId` 가 없을 때만 채운다. 항목에 적은 값이 우선이다. */
   folder?: string | undefined;
+  draft?: boolean | undefined;
   apiUrl?: string | undefined;
 }
 
@@ -37,6 +42,12 @@ export async function runCaseCreate(
   fetchImpl?: FetchLike,
   stdin?: NodeJS.ReadableStream,
 ): Promise<number> {
+  if (options.draft !== undefined && typeof options.draft !== 'boolean') {
+    throw new CliError(
+      'case_invalid_body',
+      'draft must be a boolean. Use --no-draft to create ready cases.',
+    );
+  }
   const context = await resolveCaseContext(env, options.apiUrl);
   const text = await readCaseBody(options.file, stdin);
   const body = parseCaseBody(text, options.file);
@@ -50,6 +61,13 @@ export async function runCaseCreate(
   if (missing.length > 0) {
     throw new CliError('case_invalid_body', describeMissing('body', missing));
   }
+  await requireReviewStatusSupport(
+    context.apiBaseUrl,
+    context.cliToken,
+    options.project,
+    fetchImpl,
+  );
+  request.draft = options.draft ?? true;
   const created = await createTestCase(
     context.apiBaseUrl,
     context.cliToken,
@@ -112,9 +130,16 @@ async function createMany(
   // 파일 전체를 먼저 검증한다. 앞의 몇 건만 만들어지고 나머지가 실패하면 반쯤 생성된 상태가
   // 남고, 같은 파일을 다시 넣으면 앞 건이 중복된다. 하나라도 틀리면 아무것도 만들지 않는다.
   const requests = validateAll(items, options.folder);
+  await requireReviewStatusSupport(
+    context.apiBaseUrl,
+    context.cliToken,
+    options.project,
+    fetchImpl,
+  );
 
   const results: CaseCreateResultPayload[] = [];
   for (const [index, request] of requests.entries()) {
+    request.draft = options.draft ?? true;
     try {
       const created = await createTestCase(
         context.apiBaseUrl,

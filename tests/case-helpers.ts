@@ -16,6 +16,7 @@ export interface FakeTestCase {
   step: string;
   precondition: string | null;
   expectedValue: string;
+  reviewStatus: 'DRAFT' | 'READY';
   verificationStatus: string;
   lastVerifiedBuildId: string | null;
   folderId: string | null;
@@ -37,6 +38,7 @@ export interface FakeCaseServerOptions {
   memberProjectIds: string[];
   items?: FakeTestCase[];
   folders?: FakeFolder[];
+  reviewStatusSupport?: boolean;
 }
 
 export interface FakeCaseServer {
@@ -58,6 +60,7 @@ export function fakeTestCase(overrides: Partial<FakeTestCase> = {}): FakeTestCas
     step: 'Tap "New Game"',
     precondition: null,
     expectedValue: 'The naming screen appears.',
+    reviewStatus: 'READY',
     verificationStatus: 'DRAFT',
     lastVerifiedBuildId: null,
     folderId: null,
@@ -257,6 +260,14 @@ export async function startFakeCaseServer(options: FakeCaseServerOptions): Promi
         return;
       }
 
+      if (
+        method === 'GET' &&
+        url.pathname.endsWith('/review-status-options') &&
+        options.reviewStatusSupport !== false
+      ) {
+        send(response, 200, JSON.stringify({ statuses: ['DRAFT', 'READY'] }));
+        return;
+      }
       const listMatch = /^\/api\/projects\/([^/]+)\/test-cases$/.exec(url.pathname);
       if (method === 'GET' && listMatch !== null) {
         const projectId = decodeURIComponent(listMatch[1] ?? '');
@@ -304,6 +315,7 @@ export async function startFakeCaseServer(options: FakeCaseServerOptions): Promi
           precondition:
             precondition !== undefined && precondition.trim() !== '' ? precondition : null,
           expectedValue: expectedValue ?? '',
+          reviewStatus: fields['draft'] === true ? 'DRAFT' : 'READY',
           verificationStatus: 'DRAFT',
           lastVerifiedBuildId: null,
           folderId: folderId !== undefined && folderId !== '' ? folderId : null,
@@ -368,6 +380,10 @@ export async function startFakeCaseServer(options: FakeCaseServerOptions): Promi
                 : existing.precondition,
             expectedValue: expectedValue ?? existing.expectedValue,
             verificationStatus: verificationStatus ?? existing.verificationStatus,
+            reviewStatus:
+              fields['reviewStatus'] === 'READY' || fields['reviewStatus'] === 'DRAFT'
+                ? fields['reviewStatus']
+                : existing.reviewStatus,
           };
           items.set(caseId, updated);
           send(response, 200, JSON.stringify(toListShape(updated)));
