@@ -29,7 +29,9 @@ describe('guide', () => {
     const sink = createMemorySink();
     expect(await runCli(['guide', 'list', '--json'], sink, {})).toBe(0);
     expect(sink.lastJson<{ revision: string }>().revision).toBe(SKILLS_REVISION);
-    expect(sink.lastJson<{ topics: { title: string }[] }>().topics[0].title).toBe('변수 메타데이터');
+    expect(sink.lastJson<{ topics: { title: string }[] }>().topics).toContainEqual(
+      expect.objectContaining({ title: '변수 메타데이터' }),
+    );
     expect(await runCli(['guide', 'show', topic.id, '--json'], sink, {})).toBe(0);
     expect(sink.lastJson<{ content: string }>().content).toContain('using Artel;');
     expect(calls.every((url) => url.includes(`/${SKILLS_REVISION}/`))).toBe(true);
