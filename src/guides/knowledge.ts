@@ -1,7 +1,7 @@
 import { CliError, UsageError } from '../errors.js';
 
 // CLI와 MCP는 같은 skill revision을 읽는다. 안내 업데이트는 별도 검토한 commit으로 고정한다.
-export const SKILLS_REVISION = '5674a5b885102903281ede87c7ae4ba09e6f6b7b';
+export const SKILLS_REVISION = '4a9dbc4b8e89950b3a8c1756fd4f2b1b07e2031e';
 const ROOT = `https://raw.githubusercontent.com/project-artel/artel-skills/${SKILLS_REVISION}/`;
 const TIMEOUT_MS = 10_000;
 
