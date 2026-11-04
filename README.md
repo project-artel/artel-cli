@@ -57,7 +57,7 @@ artel guide show artel-unity-sdk --json
 
 목록과 원문은 `artel-skills`의 같은 commit으로 고정되며 응답에 revision과 source URL을 표시합니다. 최신 branch를 자동으로 따라가지 않습니다. 조회는 SDK나 skill을 설치하지 않으며, 설치·attribute 작성·MCP 및 웹 등록 절차는 조회한 안내에서 확인합니다. 네트워크 조회가 실패하면 nonzero exit와 오류를 반환합니다.
 
-`artel guide show artel-game-identities`는 **변수 메타데이터** 안내입니다. 표시 이름은 `변수 메타데이터`(영문 `Variable metadata`)이며, 기존 topic ID는 호환성을 위해 유지합니다.
+`artel guide show artel-game-identities`는 `[ArtelMetadata]`로 선언하는 **변수 메타데이터** 안내입니다. 표시 이름은 `변수 메타데이터`(영문 `Variable metadata`)이며, 기존 topic ID는 호환성을 위해 유지합니다. 이전 `[ArtelGameIdentity]`는 deprecated 호환 이름입니다.
 
 ```
 artel auth login                                        # this machine's credential
