@@ -45,6 +45,7 @@ import { processSink, writeErrorEnvelope, type OutputSink } from './output/envel
 import { cliVersionForDisplay } from './version.js';
 import {
   CONTENT_MAP_MODES,
+  INPUT_MODES,
   KNOWLEDGE_MODES,
   parseAxisList,
   parseAxisValues,
@@ -432,6 +433,10 @@ export async function runCli(
     )
     .requiredOption('--test-run <id>', 'test run whose scenarios the agent executes')
     .requiredOption('--instance <id>', 'game instance the agent drives')
+    .option(
+      '--input-mode <mode>',
+      `input backend for this run: ${INPUT_MODES.join(' | ')}; defaults to virtual`,
+    )
     .option('--model <id>', 'pin the model this run uses; "artel qa models" lists the ids')
     .option('--prompt-version <version>', 'pin the prompt version this run uses')
     .option(
@@ -469,6 +474,7 @@ export async function runCli(
       async (options: {
         testRun: string;
         instance: string;
+        inputMode?: string | undefined;
         model?: string | undefined;
         promptVersion?: string | undefined;
         reasoningEffort?: string | undefined;
@@ -489,6 +495,10 @@ export async function runCli(
             json: options.json,
             testRun: options.testRun,
             instance: options.instance,
+            inputMode:
+              options.inputMode === undefined
+                ? undefined
+                : requireAxisValue(options.inputMode, '--input-mode', INPUT_MODES),
             model: options.model,
             promptVersion: options.promptVersion,
             reasoningEffort: options.reasoningEffort,

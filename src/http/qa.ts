@@ -148,6 +148,7 @@ export interface QaStats {
 export interface CreateQaRunRequest {
   testRunId: string;
   gameInstanceId: string;
+  inputMode?: string | undefined;
   model?: string | undefined;
   promptVersion?: string | undefined;
   reasoning?: { effort?: string | undefined; maxTokens?: number | undefined } | undefined;

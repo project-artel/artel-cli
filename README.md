@@ -246,7 +246,13 @@ server, and the result shows what it chose.
 | `--arch` | agent structure as a JSON object, or `@path` to a file holding one |
 | `--content-map-mode` | `on`, `frozen` or `off` |
 | `--knowledge-mode` | `learning`, `frozen` or `off` |
+| `--input-mode` | `virtual` (default) or `os`; fixed for the run |
 | `--label` | the experiment name |
+
+`--input-mode os` asks the SDK to send real OS keyboard and mouse input. The
+backend checks SDK support and permissions before starting the run; failures
+are returned as errors without switching to virtual input. No build setting is
+needed. This option is available on `qa run`; `qa matrix` keeps virtual input.
 
 **The exit code is the verdict.** `0` only when the run passed. Failed,
 cancelled and unknown are all `1`. A run whose connection died before a summary
