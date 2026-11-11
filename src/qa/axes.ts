@@ -22,6 +22,8 @@ export const CONTENT_MAP_MODES: readonly string[] = ['on', 'frozen', 'off'];
 
 export const KNOWLEDGE_MODES: readonly string[] = ['learning', 'frozen', 'off'];
 
+export const INPUT_MODES: readonly string[] = ['virtual', 'os'];
+
 /**
  * 축 값 하나를 검증해 그대로 돌려준다. 빈 문자열도 여기서 걸린다 — 서버는 빈 문자열을 값으로
  * 읽으므로 body 에 실어서는 안 된다.

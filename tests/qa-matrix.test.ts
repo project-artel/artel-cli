@@ -264,6 +264,7 @@ describe('qa run axis flags', () => {
     const body = api.createBodies[0] as Record<string, unknown>;
     expect(Object.keys(body)).not.toContain('contentMapMode');
     expect(Object.keys(body)).not.toContain('knowledgeMode');
+    expect(Object.keys(body)).not.toContain('inputMode');
     expect(Object.keys(body)).not.toContain('label');
   });
 
@@ -302,6 +303,69 @@ describe('qa run axis flags', () => {
     expect(code).toBe(EXIT_USAGE);
     expect(sink.everything()).toContain('--content-map-mode takes one of on, frozen, off');
     expect(api.createBodies).toHaveLength(0);
+  });
+
+  it.each(['virtual', 'os'])('선택한 입력 모드 %s를 run 요청에 전달', async (inputMode) => {
+    const code = await runCli(
+      [
+        'qa',
+        'run',
+        '--test-run',
+        '1',
+        '--instance',
+        '1',
+        '--input-mode',
+        inputMode,
+        '--no-wait',
+        '--json',
+      ],
+      createMemorySink(),
+      env(),
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(api.createBodies[0]).toMatchObject({ inputMode });
+  });
+
+  it('잘못된 입력 모드를 HTTP 요청 전에 거절', async () => {
+    const sink = createMemorySink();
+    const code = await runCli(
+      ['qa', 'run', '--test-run', '1', '--instance', '1', '--input-mode', 'native'],
+      sink,
+      env(),
+    );
+
+    expect(code).toBe(EXIT_USAGE);
+    expect(sink.everything()).toContain('--input-mode takes one of virtual, os');
+    expect(api.createBodies).toHaveLength(0);
+  });
+
+  it('OS 입력 검증 실패 이유를 호출자에게 전달', async () => {
+    await expect(
+      runQaRun(
+        {
+          json: true,
+          testRun: '1',
+          instance: '1',
+          inputMode: 'os',
+          force: false,
+          wait: false,
+          timeoutSeconds: 5,
+        },
+        createMemorySink(),
+        env(),
+        () =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                code: 'sdk_input_unavailable',
+                message: 'OS input requires Accessibility permission.',
+              }),
+              { status: 400, headers: { 'Content-Type': 'application/json' } },
+            ),
+          ),
+      ),
+    ).rejects.toThrow('OS input requires Accessibility permission.');
   });
 
   it('rejects a blank --label rather than sending a name nobody chose', async () => {

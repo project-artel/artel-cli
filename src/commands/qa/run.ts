@@ -12,6 +12,7 @@ export interface QaRunCommandOptions {
   json: boolean;
   testRun: string;
   instance: string;
+  inputMode?: string | undefined;
   model?: string | undefined;
   promptVersion?: string | undefined;
   reasoningEffort?: string | undefined;
@@ -61,6 +62,7 @@ export async function runQaRun(
     {
       testRunId: options.testRun,
       gameInstanceId: options.instance,
+      ...(options.inputMode === undefined ? {} : { inputMode: options.inputMode }),
       ...buildAxisFields({
         model: options.model,
         promptVersion: options.promptVersion,
