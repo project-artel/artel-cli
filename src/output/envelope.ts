@@ -20,6 +20,7 @@ import type {
   LoginPayload,
   LogoutPayload,
   ProjectListPayload,
+  ProjectPayload,
   QaCancelPayload,
   QaDiffPayload,
   QaLabelsPayload,
@@ -78,6 +79,7 @@ export type CommandPayload =
   | DocumentUploadPayload
   | ContentMapScanPayload
   | ProjectListPayload
+  | ProjectPayload
   | ContentMapViewPayload
   | IssueListPayload
   | IssueStatusChangePayload
