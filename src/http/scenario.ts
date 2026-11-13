@@ -239,7 +239,7 @@ export async function deleteScenario(
       if (failure.status === 409) {
         return new CliError(
           'scenario_has_qa_history',
-          `Test scenario ${scenarioId} has QA runs on it, so it is kept by default. Re-run with --force to delete that history along with it.`,
+          `Test scenario ${scenarioId} has QA execution history. Use --force to permanently delete the scenario, its execution history, and issues found in those executions.`,
         );
       }
       return null;

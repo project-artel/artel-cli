@@ -68,6 +68,7 @@ artel case create --project <id> --file cases.json      # what the agent should 
 artel case folder create --project <id> --name Combat   # group the cases
 artel case move <case ids> --project <id> --folder <id> # file them into a folder
 artel scenario create --project <id> --steps steps.json # how it should check it
+artel scenario delete <scenario-id>
 artel run create --project <id> --name smoke            # a set of scenarios
 artel run scenarios <run id> --project <id> --set <ids> # fill that set
 artel game start --build ./Build/Game.exe --project <id>
@@ -87,6 +88,9 @@ artel server start                                      # the whole stack, no Do
 `artel <group> --help` lists the rest of each group. Every command that reports
 a result also takes `--json`. In that output a key never disappears, and an
 unknown value is `null`.
+
+실행 기록이 있는 시나리오를 삭제하려면 `artel scenario delete <scenario-id> --force`를 사용하세요.
+해당 시나리오의 QA 실행 기록과 발견 이슈도 영구적으로 삭제됩니다.
 
 ## Running ARTEL on this machine
 

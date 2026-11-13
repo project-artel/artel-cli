@@ -1298,7 +1298,7 @@ export async function runCli(
     .argument('<scenario-id>', 'test scenario to delete')
     .option(
       '--force',
-      'also delete its QA run history; without this, a scenario with QA history is kept',
+      'permanently delete its QA execution history and issues found in those executions',
       false,
     )
     .option('--json', 'emit the machine-readable result instead of human output', false)
