@@ -1,6 +1,7 @@
 import { CliError } from '../errors.js';
 import type { FetchLike } from './client.js';
 import { parseHttpFailure, toCliError } from './errors.js';
+import { asNullableString, asObject, asString, requestJson } from './json.js';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -28,6 +29,42 @@ export interface ProjectPage {
   page: number;
   size: number;
   total: number;
+}
+
+export const PROJECT_GENRES = [
+  'ACTION',
+  'RPG',
+  'PUZZLE',
+  'SIMULATION',
+  'STRATEGY',
+  'SPORTS',
+  'SHOOTER',
+  'CASUAL',
+  'OTHER',
+] as const;
+
+export interface CreateProjectRequest {
+  name: string;
+  genre: (typeof PROJECT_GENRES)[number];
+  description?: string | undefined;
+}
+
+export async function createProject(
+  apiBaseUrl: string,
+  cliToken: string,
+  request: CreateProjectRequest,
+): Promise<ProjectSummary> {
+  const endpoint = `${apiBaseUrl}${PROJECTS_PATH}`;
+  const body = await requestJson({ method: 'POST', endpoint, cliToken, body: request });
+  const project = asObject(body, 'project', endpoint);
+  return {
+    id: asString(project.id, 'id', endpoint),
+    name: asString(project.name, 'name', endpoint),
+    genre: asString(project.genre, 'genre', endpoint),
+    description: asNullableString(project.description, 'description', endpoint),
+    myRole: asString(project.myRole, 'myRole', endpoint),
+    updatedAt: asString(project.updatedAt, 'updatedAt', endpoint),
+  };
 }
 
 /**

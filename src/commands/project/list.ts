@@ -55,7 +55,7 @@ export async function runProjectList(
 
 function printProjectList(sink: OutputSink, payload: ProjectListPayload): void {
   if (payload.items.length === 0) {
-    sink.out('No projects. Create one in the console, or ask to be invited to one.');
+    sink.out('No projects. Run "artel project create --help" or ask to be invited to a project.');
     return;
   }
 

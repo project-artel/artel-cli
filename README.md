@@ -61,6 +61,7 @@ artel guide show artel-unity-sdk --json
 
 ```
 artel auth login                                        # this machine's credential
+artel project create --name "My Game" --genre ACTION     # returns the new project id
 artel project list                                      # ids the other commands take
 artel doc upload --project <id> design.pdf              # the plan the agent reads
 artel case create --project <id> --file cases.json      # what the agent should check

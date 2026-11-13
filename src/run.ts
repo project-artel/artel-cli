@@ -24,6 +24,7 @@ import { runGameStart } from './commands/game/start.js';
 import { runIssueList } from './commands/issue/list.js';
 import { runMapShow } from './commands/map/show.js';
 import { runIssueStatusChange } from './commands/issue/status.js';
+import { runProjectCreate, type ProjectCreateCommandOptions } from './commands/project/create.js';
 import { runProjectList } from './commands/project/list.js';
 import { runQaCancel } from './commands/qa/cancel.js';
 import { runQaDiff } from './commands/qa/diff.js';
@@ -38,7 +39,7 @@ import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from './exit.js';
 import { DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH } from './game/launch-args.js';
 import { DEFAULT_LOGOUT_TIMEOUT_MS } from './game/logout-flow.js';
 import { DEFAULT_REGISTRATION_TIMEOUT_MS } from './game/start-flow.js';
-import { MAX_PROJECT_PAGE_SIZE } from './http/projects.js';
+import { MAX_PROJECT_PAGE_SIZE, PROJECT_GENRES } from './http/projects.js';
 import { DEFAULT_ISSUE_PAGE_SIZE } from './http/issues.js';
 import { DEFAULT_QA_TRY_LIST_SIZE, MAX_QA_TRY_LIST_SIZE } from './http/qa.js';
 import { processSink, writeErrorEnvelope, type OutputSink } from './output/envelope.js';
@@ -267,9 +268,9 @@ export async function runCli(
       await runAuthLogout(options, sink, env);
     });
 
-  program
-    .command('project')
-    .description('List the projects this credential can see')
+  const project = program.command('project').description('Create and list Artel projects');
+
+  project
     .command('list')
     .description(
       'List the projects this credential can see, so --project has somewhere to come from',
@@ -308,6 +309,19 @@ export async function runCli(
         );
       },
     );
+
+  project
+    .command('create')
+    .description('Create an Artel project')
+    .requiredOption('--name <name>', 'project name')
+    .requiredOption('--genre <genre>', `project genre (${PROJECT_GENRES.join(', ')})`)
+    .option('--description <text>', 'project description')
+    .option('--json', 'emit the machine-readable result instead of human output', false)
+    .option('--api-url <url>', 'orchestration API base URL; overrides ARTEL_API_BASE_URL')
+    .action(async (options: ProjectCreateCommandOptions) => {
+      json = options.json;
+      await runProjectCreate(options, sink, env);
+    });
 
   const game = program.command('game').description('Launch a game build that is already signed in');
 
